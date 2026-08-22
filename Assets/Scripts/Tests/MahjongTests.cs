@@ -36,6 +36,15 @@ namespace Mahjong.Tests
             t.TestSelfDrawCountsAsConcealedTriplet();
             t.TestLianZhuangTai();
             t.TestInvalidWinningTileThrows();
+            t.TestPinghuRequiresTwoSidedWait();
+            t.TestPinghuRejectsEdgeWait();
+            t.TestFlowerAndZhengHuaNotDoubled();
+            t.TestDealHandSizes();
+            t.TestNoFlowersLeftInHand();
+            t.TestTileConservationAfterDeal();
+            t.TestSeatWindsFollowDealer();
+            t.TestSeatHelpers();
+            t.TestGameStateCloneIsDeep();
             t.Report();
             return t.failed == 0;
         }
@@ -301,6 +310,128 @@ namespace Mahjong.Tests
             }
             catch (ArgumentException) { threw = true; }
             Assert(threw, "胡牌張傳入花牌 id 應拋 ArgumentException 而非索引越界");
+        }
+
+        // ---------- 平胡的兩面聽條件 ----------
+
+        void TestPinghuRequiresTwoSidedWait()
+        {
+            // 123萬 456萬 789萬 123筒 + 9筒9筒 + 5筒6筒，放槍胡 7筒 -> 兩面聽（4筒/7筒）
+            // 將牌必須是數牌，用字牌當將本來就不算平胡，會測不到兩面聽這個條件
+            var ctx = new WinContext
+            {
+                ConcealedHand = Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 17,17, 13,14),
+                WinningTile = 15,
+                IsSelfDraw = false
+            };
+            var r = ScoreCalculator.Calculate(ctx, FanTable.Default());
+            Assert(r.Items.Any(i => i.Name == "平胡"), "全順子且兩面聽應計平胡");
+        }
+
+        void TestPinghuRejectsEdgeWait()
+        {
+            // 123萬 456萬 789萬 123筒 + 2萬2萬 + 8筒9筒，放槍胡 7筒 -> 邊張，不算平胡
+            // 除了兩面聽以外的平胡條件（全順子、將是數牌、非自摸）全部成立，
+            // 這樣失敗才確定是被兩面聽這一條擋掉的
+            var ctx = new WinContext
+            {
+                ConcealedHand = Hand(0,1,1,1,2, 3,4,5, 6,7,8, 9,10,11, 16,17),
+                WinningTile = 15,
+                IsSelfDraw = false
+            };
+            var r = ScoreCalculator.Calculate(ctx, FanTable.Default());
+            Assert(!r.Items.Any(i => i.Name == "平胡"), "邊張聽（89 聽 7）不應計平胡");
+        }
+
+        void TestFlowerAndZhengHuaNotDoubled()
+        {
+            // 東家摸到春(34)與梅(38)，兩張都是正花。本專案規則：每張花一律 1 台，正花不另加
+            var ctx = new WinContext
+            {
+                ConcealedHand = Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 12,13, 27,27),
+                WinningTile = 14,
+                SeatIndex = 0,
+                Flowers = new List<int> { 34, 38 }
+            };
+            var r = ScoreCalculator.Calculate(ctx, FanTable.Default());
+            var flower = r.Items.FirstOrDefault(i => i.Name == "花牌");
+            Assert(flower.Tai == 2, "兩張花應為 2 台");
+            Assert(!r.Items.Any(i => i.Name == "正花"), "正花不另外加計（本專案規則）");
+        }
+
+        // ---------- 牌局狀態 ----------
+
+        void TestDealHandSizes()
+        {
+            var state = GameState.CreateNewHand(dealerIndex: 1, seed: 20260822);
+            bool ok = state.Players[1].ConcealedTileCount == GameState.DealerHandSize;
+            for (int seat = 0; seat < GameState.PlayerCount; seat++)
+                if (seat != 1 && state.Players[seat].ConcealedTileCount != GameState.PlayerHandSize)
+                    ok = false;
+            Assert(ok, "發牌後莊家 17 張、閒家各 16 張");
+        }
+
+        void TestNoFlowersLeftInHand()
+        {
+            // 補花必須補到手上完全沒有花，而且補進來的花要繼續補
+            bool ok = true;
+            for (int seed = 1; seed <= 30; seed++)
+            {
+                var state = GameState.CreateNewHand(dealerIndex: seed % 4, seed: seed);
+                for (int seat = 0; seat < GameState.PlayerCount; seat++)
+                    if (state.Players[seat].ConcealedTileCount != state.ExpectedHandSize(seat))
+                        ok = false;
+            }
+            Assert(ok, "補花後每家張數都補滿（連補 30 副牌驗證）");
+        }
+
+        void TestTileConservationAfterDeal()
+        {
+            // 手牌 + 花 + 牌山剩餘 = 144，一張都不能憑空生出或消失
+            var state = GameState.CreateNewHand(dealerIndex: 0, seed: 555);
+            int accounted = state.Wall.Remaining;
+            for (int seat = 0; seat < GameState.PlayerCount; seat++)
+                accounted += state.Players[seat].ConcealedTileCount + state.Players[seat].Flowers.Count;
+            Assert(accounted == 144, "發牌補花後總牌數守恆為 144 張");
+        }
+
+        void TestSeatWindsFollowDealer()
+        {
+            // 莊家為東，之後逆時針依序南、西、北
+            var state = GameState.CreateNewHand(dealerIndex: 2, seed: 99);
+            bool ok = state.Players[2].SeatWind == TileDef.EAST
+                   && state.Players[3].SeatWind == TileDef.SOUTH
+                   && state.Players[0].SeatWind == TileDef.WEST
+                   && state.Players[1].SeatWind == TileDef.NORTH;
+            Assert(ok, "門風以莊家為東逆時針排列");
+        }
+
+        void TestSeatHelpers()
+        {
+            Assert(GameState.NextSeat(3) == 0, "下一家會繞回 0");
+            Assert(GameState.SeatDistance(3, 1) == 2, "座位距離逆時針計算");
+            Assert(GameState.IsNextSeatOf(0, 3), "0 是 3 的下家（吃只能吃下家）");
+            Assert(!GameState.IsNextSeatOf(2, 3), "2 不是 3 的下家");
+        }
+
+        void TestGameStateCloneIsDeep()
+        {
+            var state = GameState.CreateNewHand(dealerIndex: 0, seed: 1234);
+            state.Players[0].Melds.Add(new Meld { Type = MeldType.Pon, BaseTile = 5, FromPlayer = 1 });
+            state.Players[0].Discards.Add(9);
+
+            var copy = state.Clone();
+            copy.Players[0].ConcealedCounts[0] += 7;
+            copy.Players[0].Melds[0].BaseTile = 30;
+            copy.Players[0].Discards.Add(11);
+            copy.CurrentPlayer = 3;
+
+            bool untouched = state.Players[0].ConcealedCounts[0] != copy.Players[0].ConcealedCounts[0]
+                          && state.Players[0].Melds[0].BaseTile == 5
+                          && state.Players[0].Discards.Count == 1
+                          && state.CurrentPlayer == 0;
+            Assert(untouched, "Clone 為深拷貝，改動副本不會影響真實局面");
+            Assert(copy.Wall == null, "Clone 不複製牌山（AI 模擬不得偷看）");
         }
     }
 }

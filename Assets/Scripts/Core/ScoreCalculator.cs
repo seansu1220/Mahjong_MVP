@@ -55,19 +55,25 @@ namespace Mahjong
         public int PerTai = 100;   // 每台
 
         // ------------------------------------------------------------
-        // 以下三項各地規則差異極大，必須與客戶逐條確認。
-        // 預設值刻意維持原型既有行為，改規則只需改這裡，不動 ScoreCalculator。
+        // 以下為各地差異最大的四項判定，本專案採用的規則見 docs/RULES.md。
+        // 客戶若採不同算法，改這裡即可，不需動 ScoreCalculator。
         // ------------------------------------------------------------
 
         /// <summary>正花是否在「每張花 1 台」之外再另計一次。
-        /// true = 一張正花共 2 台；false = 所有花牌一律 1 台。</summary>
-        public bool ZhengHuaStacksWithFlower = true;
+        /// 本專案採 false：所有花牌一律每張 1 台，正花不另加。</summary>
+        public bool ZhengHuaStacksWithFlower = false;
 
-        /// <summary>成立大四喜／小四喜時，是否仍另計門風、圈風。</summary>
+        /// <summary>成立大四喜／小四喜時，是否仍另計門風、圈風。
+        /// 本專案採 false：大牌已含這些刻子，不重複計算。</summary>
         public bool WindTilesCountWithBigWinds = false;
 
-        /// <summary>成立大三元／小三元時，是否仍另計三元牌。</summary>
+        /// <summary>成立大三元／小三元時，是否仍另計三元牌。
+        /// 本專案採 false：大牌已含這些刻子，不重複計算。</summary>
         public bool DragonTilesCountWithBigDragons = false;
+
+        /// <summary>平胡是否要求兩面聽（邊張、嵌張、單吊、對倒不算平胡）。
+        /// 本專案採 true，為台灣 16 張最普遍的算法。</summary>
+        public bool PinghuRequiresTwoSidedWait = true;
 
         public readonly Dictionary<FanId, FanRule> Rules = new Dictionary<FanId, FanRule>();
 
@@ -229,10 +235,11 @@ namespace Mahjong
             // ---- 牌型 ----
             if (allTriplets) Add(FanId.Pengpenghu);
 
-            // 平胡：全順子、將非字牌、非自摸。
-            // 註：部分規則另要求「兩面聽」與「無花」，此處尚未實作，待客戶確認台數表後再補。
-            if (!allTriplets && allSets.All(s => !s.IsTriplet)
-                && !TileDef.IsHonor(p.PairTile) && !ctx.IsSelfDraw)
+            // 平胡：全順子、將非字牌、非自摸，且（預設）必須兩面聽。
+            // 「無花才算平胡」屬少數規則，本專案不採用，詳見 docs/RULES.md。
+            if (allSets.All(s => !s.IsTriplet)
+                && !TileDef.IsHonor(p.PairTile) && !ctx.IsSelfDraw
+                && (!t.PinghuRequiresTwoSidedWait || IsTwoSidedWait(p, ctx.WinningTile)))
                 Add(FanId.Pinghu);
 
             // 花色
@@ -313,6 +320,25 @@ namespace Mahjong
             var target = handSets.FirstOrDefault(s => !s.IsTriplet && SetCovers(s, winningTile))
                       ?? handSets.FirstOrDefault(s => s.IsTriplet && SetCovers(s, winningTile));
             if (target != null) target.Concealed = false;
+        }
+
+        /// <summary>
+        /// 判斷胡牌張是不是「兩面聽」進來的——平胡的條件之一。
+        /// 對順子 (b, b+1, b+2)：
+        ///   胡最小張 b     → 原本的搭子是 (b+1, b+2)，聽 b 與 b+3，b+3 要存在 ⇒ b 的點數 ≤ 6
+        ///   胡最大張 b+2   → 原本的搭子是 (b, b+1)，聽 b-1 與 b+2，b-1 要存在 ⇒ 胡牌張點數 ≥ 4
+        ///   胡中間張 b+1   → 嵌張，不算兩面
+        /// 單吊將牌與對倒都不在順子裡，自然不成立。
+        /// </summary>
+        static bool IsTwoSidedWait(HandPattern pattern, int winningTile)
+        {
+            foreach (var set in pattern.Sets)
+            {
+                if (set.IsTriplet) continue;
+                if (winningTile == set.BaseTile && TileDef.GetRank(winningTile) <= 6) return true;
+                if (winningTile == set.BaseTile + 2 && TileDef.GetRank(winningTile) >= 4) return true;
+            }
+            return false;
         }
 
         static bool SetCovers(SetInfo set, int tile)

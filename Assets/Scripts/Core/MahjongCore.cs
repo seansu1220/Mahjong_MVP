@@ -108,6 +108,10 @@ namespace Mahjong
         /// <summary>算牌型時，槓視為刻子</summary>
         public bool IsTriplet => Type != MeldType.Chi;
 
+        /// <summary>深拷貝。GameState.Clone 用，避免 AI 模擬改動到真實局面。</summary>
+        public Meld Clone()
+            => new Meld { Type = Type, BaseTile = BaseTile, FromPlayer = FromPlayer };
+
         public override string ToString()
         {
             string t = Type == MeldType.Chi ? "吃" : Type == MeldType.Pon ? "碰"

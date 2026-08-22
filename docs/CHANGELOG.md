@@ -165,3 +165,60 @@
   避免 Unity API 相容性層級設為 2.0 時編譯失敗。
 
 **測試結果：27 項全數通過（修正前為 15 項中 1 項失敗）。**
+
+---
+
+## 2026-08-22（第二次）　規則定案、Unity 骨架與 GameState
+
+### 一、Unity 專案骨架納入版控
+
+**修改內容**
+Unity 2022.3.22f1 專案搬入，建置目標已設為 WebGL（`webGLThreadsSupport: 0`，符合不使用多執行緒的限制）。
+`.gitignore` 補上 `.vsconfig`；另修正 Unity 的 `*.csproj` 排除規則會誤傷 `tools/CoreTests` 手寫專案檔的問題。
+確認 `Library/`、`Temp/`、`Logs/`、`UserSettings/` 全數排除，納管 41 個檔案。
+遠端設定為 https://github.com/seansu1220/Mahjong_MVP 。
+
+---
+
+### 二、規則定案並補實作「兩面聽」
+
+**問題描述**
+先前標記為「待客戶確認」的四項規則差異需要定案，其中平胡的兩面聽條件從未實作。
+
+**根本原因**
+原程式的平胡註解宣稱檢查兩面聽，實際只檢查了全順子、將非字牌、非自摸三項。
+
+**修改內容**
+- 新增 `docs/RULES.md`，完整記錄本專案採用的規則與台數表，可直接作為給客戶的規格書。
+- `Assets/Scripts/Core/ScoreCalculator.cs`：新增 `IsTwoSidedWait`，
+  依順子中胡牌張的位置判定兩面／邊張／嵌張，單吊與對倒自然不成立。
+- `FanTable` 新增 `PinghuRequiresTwoSidedWait`（預設 `true`）。
+- `FanTable.ZhengHuaStacksWithFlower` 預設改為 `false`（花牌一律每張 1 台，正花不另加）。
+- 大牌不重複計小牌（`WindTilesCountWithBigWinds`、`DragonTilesCountWithBigDragons` 維持 `false`）。
+- 補上 `TestPinghuRequiresTwoSidedWait`、`TestPinghuRejectsEdgeWait`、`TestFlowerAndZhengHuaNotDoubled`。
+
+---
+
+### 三、新增 GameState.cs（牌局現況）
+
+**修改內容**
+新增 `Assets/Scripts/Core/GameState.cs`，純 C#，不含任何 UnityEngine 依賴。職責僅限「記住局面」與「純查詢」，流程推進留給 TurnEngine。
+
+- `GamePhase`、`GameEndReason`：以 enum 定義局面階段與結束原因，不用 magic string。
+- `PlayerState`：手牌計數陣列、副露、花牌、牌河，含 `ConcealedTileCount`、`IsConcealedHand`
+  與會拋出明確錯誤的 `AddTile` / `RemoveTile`。
+- `GameState.CreateNewHand`：發牌（莊家 17、閒家 16）並依莊家順序補花，
+  補花走牌山尾端且會重複補到手上沒有花為止。
+- `DrawTile` / `DrawReplacementTile`：摸牌與補牌，牌山抽乾回傳 `NoTile` 而非拋例外，
+  因為流局是合法的牌局狀態，該由 TurnEngine 判定。
+- `NextSeat` / `SeatDistance` / `IsNextSeatOf`：純函式，供「吃只能下家」與
+  「多家可胡時逆時針近者優先」使用。
+- `BuildVisibleCounts`：彙整牌河與副露，供 AI 與聽牌計算扣除已摸不到的牌。
+- `Clone`：深拷貝，且刻意不複製 `Wall`（AI 模擬不應偷看牌山）。
+- `MahjongCore.cs` 的 `Meld` 新增 `Clone()`，供深拷貝使用（僅新增方法，未改既有簽章）。
+
+**新增測試**
+發牌張數、補花補滿（連測 30 副牌）、總牌數守恆 144、門風排列、座位輔助函式、
+`Clone` 深拷貝且不含牌山。
+
+**測試結果：41 項全數通過。**
