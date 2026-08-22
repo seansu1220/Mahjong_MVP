@@ -121,6 +121,12 @@ namespace Mahjong
         /// <summary>是否處於槓後補牌狀態（供槓上開花判定）</summary>
         public bool AwaitingKanReplacement;
 
+        /// <summary>
+        /// 現在這張牌是不是剛摸進來的。
+        /// 自摸只能在剛摸完牌時宣告——吃碰完雖然手牌也是 3n+2 張，但那不是自摸。
+        /// </summary>
+        public bool HasDrawnThisTurn;
+
         // ---------- 開局 ----------
 
         /// <summary>
@@ -162,6 +168,7 @@ namespace Mahjong
             state.DealInitialTiles();
             state.ReplaceAllFlowers();
             state.Phase = GamePhase.WaitingDiscard;   // 莊家已有 17 張，接著要打出一張
+            state.HasDrawnThisTurn = true;            // 莊家的第 17 張視同摸進來的，可宣告天胡以外的自摸
             return state;
         }
 
@@ -288,7 +295,8 @@ namespace Mahjong
                 EndReason = EndReason,
                 LastDiscardTile = LastDiscardTile,
                 LastDiscardFrom = LastDiscardFrom,
-                AwaitingKanReplacement = AwaitingKanReplacement
+                AwaitingKanReplacement = AwaitingKanReplacement,
+                HasDrawnThisTurn = HasDrawnThisTurn
             };
             for (int seat = 0; seat < PlayerCount; seat++)
                 copy.Players[seat] = Players[seat] == null ? null : Players[seat].Clone();

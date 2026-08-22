@@ -45,6 +45,17 @@ namespace Mahjong.Tests
             t.TestSeatWindsFollowDealer();
             t.TestSeatHelpers();
             t.TestGameStateCloneIsDeep();
+            t.TestChiOnlyFromLeftPlayer();
+            t.TestChiVariants();
+            t.TestWinBeatsPon();
+            t.TestNearestWinnerWins();
+            t.TestClaimedTileLeavesDiscardPile();
+            t.TestConcealedKanDrawsFromTail();
+            t.TestAddedKanUpgradesPonMeld();
+            t.TestCannotSelfDrawWinAfterPon();
+            t.TestIllegalActionsAreRejected();
+            t.TestFullGameNoClaims();
+            t.TestFullGameWithClaims();
             t.Report();
             return t.failed == 0;
         }
@@ -432,6 +443,323 @@ namespace Mahjong.Tests
                           && state.CurrentPlayer == 0;
             Assert(untouched, "Clone 為深拷貝，改動副本不會影響真實局面");
             Assert(copy.Wall == null, "Clone 不複製牌山（AI 模擬不得偷看）");
+        }
+
+        // ---------- 流程引擎 ----------
+
+        /// <summary>做出一個手牌清空、可自由擺設的局面，用來測特定情境。</summary>
+        static GameState BlankBoard(int dealerIndex = 0, int seed = 4242)
+        {
+            var state = GameState.CreateNewHand(dealerIndex, seed: seed);
+            for (int seat = 0; seat < GameState.PlayerCount; seat++)
+            {
+                Array.Clear(state.Players[seat].ConcealedCounts, 0, TileDef.KINDS);
+                state.Players[seat].Flowers.Clear();
+            }
+            return state;
+        }
+
+        static void GiveTiles(PlayerState player, params int[] tiles)
+        {
+            foreach (int tile in tiles) player.AddTile(tile);
+        }
+
+        /// <summary>把局面擺成「某家剛打出一張牌，等其他家宣告」</summary>
+        static void SetPendingDiscard(GameState state, int discarder, int tile)
+        {
+            state.Players[discarder].Discards.Add(tile);
+            state.LastDiscardTile = tile;
+            state.LastDiscardFrom = discarder;
+            state.Phase = GamePhase.WaitingClaim;
+        }
+
+        static bool HasAction(List<GameAction> actions, ActionType type)
+            => actions.Exists(a => a.Type == type);
+
+        void TestChiOnlyFromLeftPlayer()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 1, 2);   // 下家有 2萬 3萬
+            GiveTiles(state.Players[2], 1, 2);   // 對家也有，但不是下家
+            SetPendingDiscard(state, discarder: 0, tile: 3);   // 0 打出 4萬
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            Assert(HasAction(engine.GetClaimActions(1), ActionType.Chi), "下家可以吃");
+            Assert(!HasAction(engine.GetClaimActions(2), ActionType.Chi), "非下家不能吃");
+            Assert(!HasAction(engine.GetClaimActions(0), ActionType.Chi), "自己打的牌不能吃");
+        }
+
+        void TestChiVariants()
+        {
+            // 手上 3萬4萬6萬7萬，打出 5萬 -> 可組 345 / 456 / 567 三種
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 2, 3, 5, 6);
+            SetPendingDiscard(state, discarder: 0, tile: 4);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var chiOptions = engine.GetClaimActions(1).FindAll(a => a.Type == ActionType.Chi);
+            Assert(chiOptions.Count == 3, "同一張牌的三種吃法都要列出");
+
+            // 字牌不可吃
+            var honorState = BlankBoard();
+            GiveTiles(honorState.Players[1], TileDef.EAST, TileDef.SOUTH);
+            SetPendingDiscard(honorState, discarder: 0, tile: TileDef.WEST);
+            var honorEngine = new TurnEngine(honorState, FanTable.Default());
+            Assert(!HasAction(honorEngine.GetClaimActions(1), ActionType.Chi), "字牌不能吃");
+        }
+
+        // 123萬 456萬 789萬 123筒 456筒 共 15 張 + 東 = 16 張，胡東成對將
+        static readonly int[] WinsOnEastHand = { 0,1,2, 3,4,5, 6,7,8, 9,10,11, 12,13,14, 27 };
+
+        void TestWinBeatsPon()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 27, 27, 0, 1);          // 下家可碰東
+            GiveTiles(state.Players[2], WinsOnEastHand);        // 對家可胡東
+            SetPendingDiscard(state, discarder: 0, tile: 27);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var result = engine.ResolveClaims(new List<GameAction>
+            {
+                new GameAction { Type = ActionType.Pon, SeatIndex = 1, Tile = 27 },
+                new GameAction { Type = ActionType.Win, SeatIndex = 2, Tile = 27 }
+            });
+
+            Assert(result.Success && result.WinnerSeat == 2, "胡的優先權高於碰");
+            Assert(state.Phase == GamePhase.Ended && state.EndReason == GameEndReason.Win, "胡牌後牌局結束");
+        }
+
+        void TestNearestWinnerWins()
+        {
+            // 座位 1 與座位 3 同時可胡座位 0 打出的東，逆時針較近的 1 優先
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], WinsOnEastHand);
+            GiveTiles(state.Players[3], WinsOnEastHand);
+            SetPendingDiscard(state, discarder: 0, tile: 27);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var result = engine.ResolveClaims(new List<GameAction>
+            {
+                new GameAction { Type = ActionType.Win, SeatIndex = 3, Tile = 27 },
+                new GameAction { Type = ActionType.Win, SeatIndex = 1, Tile = 27 }
+            });
+
+            Assert(result.WinnerSeat == 1, "多家可胡時取逆時針離打牌者最近的一家");
+        }
+
+        void TestClaimedTileLeavesDiscardPile()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 27, 27, 0, 1);
+            SetPendingDiscard(state, discarder: 0, tile: 27);
+            int discardsBefore = state.Players[0].Discards.Count;
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var result = engine.ResolveClaims(new List<GameAction>
+            {
+                new GameAction { Type = ActionType.Pon, SeatIndex = 1, Tile = 27 }
+            });
+
+            Assert(result.Success, "碰應成立");
+            Assert(state.Players[0].Discards.Count == discardsBefore - 1, "被碰走的牌要從牌河移除");
+            Assert(state.Players[1].Melds.Count == 1 && state.Players[1].ConcealedCounts[27] == 0,
+                   "碰之後手上兩張進副露");
+            Assert(state.CurrentPlayer == 1 && state.Phase == GamePhase.WaitingDiscard,
+                   "碰完換宣告者出牌");
+        }
+
+        void TestConcealedKanDrawsFromTail()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[0], 5, 5, 5, 5, 9, 10);
+            state.Phase = GamePhase.WaitingDiscard;
+            state.CurrentPlayer = 0;
+            state.HasDrawnThisTurn = true;
+            int wallBefore = state.Wall.Remaining;
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            Assert(HasAction(engine.GetTurnActions(0), ActionType.AnKan), "手上四張應可暗槓");
+
+            var result = engine.ApplyTurnAction(
+                new GameAction { Type = ActionType.AnKan, SeatIndex = 0, Tile = 5 });
+
+            Assert(result.Success && result.DrawnTile != GameState.NoTile, "暗槓後要補一張");
+            Assert(state.Wall.Remaining < wallBefore, "補牌要從牌山取走");
+            Assert(state.Players[0].ConcealedCounts[5] == 0, "四張都進副露");
+            Assert(state.Players[0].Melds[0].Type == MeldType.AnKan, "副露記為暗槓");
+            Assert(state.Players[0].IsConcealedHand, "暗槓不破門清");
+            Assert(state.AwaitingKanReplacement, "槓後補牌狀態要標記，供槓上開花判定");
+            Assert(state.Phase == GamePhase.WaitingDiscard && state.CurrentPlayer == 0,
+                   "補完仍由同一家出牌");
+        }
+
+        void TestAddedKanUpgradesPonMeld()
+        {
+            var state = BlankBoard();
+            state.Players[0].Melds.Add(new Meld { Type = MeldType.Pon, BaseTile = 12, FromPlayer = 2 });
+            GiveTiles(state.Players[0], 12, 0, 1);
+            state.Phase = GamePhase.WaitingDiscard;
+            state.CurrentPlayer = 0;
+            state.HasDrawnThisTurn = true;
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            Assert(HasAction(engine.GetTurnActions(0), ActionType.AddKan), "碰過又摸到第四張應可加槓");
+
+            var result = engine.ApplyTurnAction(
+                new GameAction { Type = ActionType.AddKan, SeatIndex = 0, Tile = 12 });
+
+            Assert(result.Success, "加槓應成立");
+            Assert(state.Players[0].Melds[0].Type == MeldType.MinKan, "碰升級為明槓");
+            Assert(state.Players[0].ConcealedCounts[12] == 0, "手上那張併入副露");
+            Assert(!state.Players[0].IsConcealedHand, "明槓破門清");
+        }
+
+        void TestCannotSelfDrawWinAfterPon()
+        {
+            // 碰完之後手牌張數雖然也是 3n+2，但那不是自摸，不該出現胡的選項
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], WinsOnEastHand);
+            state.Players[1].AddTile(27);   // 補成 17 張，牌型已成
+            state.Phase = GamePhase.WaitingDiscard;
+            state.CurrentPlayer = 1;
+            state.HasDrawnThisTurn = false;   // 剛吃碰完，不是摸進來的
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            Assert(!HasAction(engine.GetTurnActions(1), ActionType.Win), "吃碰之後不能宣告自摸");
+
+            state.HasDrawnThisTurn = true;
+            Assert(HasAction(engine.GetTurnActions(1), ActionType.Win), "剛摸完牌則可宣告自摸");
+        }
+
+        void TestIllegalActionsAreRejected()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[0], 0, 1, 2);
+            state.Phase = GamePhase.WaitingDiscard;
+            state.CurrentPlayer = 0;
+
+            var engine = new TurnEngine(state, FanTable.Default());
+
+            var wrongSeat = engine.ApplyTurnAction(
+                new GameAction { Type = ActionType.Discard, SeatIndex = 2, Tile = 0 });
+            Assert(!wrongSeat.Success && wrongSeat.Error != null, "不是自己的回合要被擋下並說明原因");
+
+            var noSuchTile = engine.ApplyTurnAction(
+                new GameAction { Type = ActionType.Discard, SeatIndex = 0, Tile = 30 });
+            Assert(!noSuchTile.Success, "打出手上沒有的牌要被擋下");
+
+            // 不合規的宣告（沒有那兩張卻宣告碰）要被過濾掉，不能改動局面
+            SetPendingDiscard(state, discarder: 3, tile: 20);
+            var bogus = engine.ResolveClaims(new List<GameAction>
+            {
+                new GameAction { Type = ActionType.Pon, SeatIndex = 0, Tile = 20 }
+            });
+            Assert(bogus.Success && state.Players[0].Melds.Count == 0, "假宣告要被過濾，視同沒有人宣告");
+            Assert(state.CurrentPlayer == 0 && state.Phase == GamePhase.WaitingDraw,
+                   "沒人宣告就換打牌者的下家摸牌");
+        }
+
+        // ----- 整局煙霧測試 -----
+
+        static int TotalTilesInPlay(GameState state)
+        {
+            int total = state.Wall.Remaining;
+            for (int seat = 0; seat < GameState.PlayerCount; seat++)
+            {
+                var player = state.Players[seat];
+                total += player.ConcealedTileCount + player.Flowers.Count + player.Discards.Count;
+                foreach (var meld in player.Melds) total += meld.Tiles().Length;
+            }
+            return total;
+        }
+
+        static GameAction ChooseTurnAction(List<GameAction> actions, bool greedy)
+        {
+            var win = actions.Find(a => a.Type == ActionType.Win);
+            if (win != null) return win;
+            if (greedy)
+            {
+                var kan = actions.Find(a => a.Type == ActionType.AnKan || a.Type == ActionType.AddKan);
+                if (kan != null) return kan;
+            }
+            return actions.Find(a => a.Type == ActionType.Discard);
+        }
+
+        static List<GameAction> CollectClaims(TurnEngine engine, bool greedy)
+        {
+            var declarations = new List<GameAction>();
+            for (int seat = 0; seat < GameState.PlayerCount; seat++)
+            {
+                if (seat == engine.State.LastDiscardFrom) continue;
+                var options = engine.GetClaimActions(seat);
+                var win = options.Find(a => a.Type == ActionType.Win);
+                if (win != null) { declarations.Add(win); continue; }
+                if (!greedy) continue;
+                var claim = options.Find(a => a.Type != ActionType.Pass);
+                if (claim != null) declarations.Add(claim);
+            }
+            return declarations;
+        }
+
+        /// <summary>把一局跑到結束，中途持續檢查牌數守恆。</summary>
+        static bool RunWholeGame(TurnEngine engine, bool greedy, out string failure)
+        {
+            failure = null;
+            var state = engine.State;
+
+            for (int step = 0; step < 3000 && state.Phase != GamePhase.Ended; step++)
+            {
+                TurnResult result;
+                if (state.Phase == GamePhase.WaitingDraw)
+                {
+                    result = engine.DrawForCurrentPlayer();
+                }
+                else if (state.Phase == GamePhase.WaitingDiscard)
+                {
+                    var chosen = ChooseTurnAction(engine.GetTurnActions(state.CurrentPlayer), greedy);
+                    if (chosen == null) { failure = $"座位 {state.CurrentPlayer} 無任何合法動作"; return false; }
+                    result = engine.ApplyTurnAction(chosen);
+                }
+                else if (state.Phase == GamePhase.WaitingClaim)
+                {
+                    result = engine.ResolveClaims(CollectClaims(engine, greedy));
+                }
+                else { failure = $"非預期的階段 {state.Phase}"; return false; }
+
+                if (!result.Success) { failure = result.Error; return false; }
+
+                int total = TotalTilesInPlay(state);
+                if (total != 144) { failure = $"牌數不守恆，目前 {total} 張"; return false; }
+            }
+
+            if (state.Phase != GamePhase.Ended) { failure = "3000 步後牌局仍未結束"; return false; }
+            return true;
+        }
+
+        void TestFullGameNoClaims()
+        {
+            bool ok = true;
+            string failure = null;
+            for (int seed = 1; seed <= 25 && ok; seed++)
+            {
+                var engine = new TurnEngine(GameState.CreateNewHand(seed % 4, seed: seed), FanTable.Default());
+                ok = RunWholeGame(engine, greedy: false, out failure);
+                if (!ok) Log($"     ! seed {seed}：{failure}");
+            }
+            Assert(ok, "25 局完整跑到結束，全程牌數守恆（不吃碰）");
+        }
+
+        void TestFullGameWithClaims()
+        {
+            bool ok = true;
+            string failure = null;
+            for (int seed = 1; seed <= 25 && ok; seed++)
+            {
+                var engine = new TurnEngine(GameState.CreateNewHand(seed % 4, seed: seed), FanTable.Default());
+                ok = RunWholeGame(engine, greedy: true, out failure);
+                if (!ok) Log($"     ! seed {seed}：{failure}");
+            }
+            Assert(ok, "25 局完整跑到結束，全程牌數守恆（積極吃碰槓）");
         }
     }
 }
