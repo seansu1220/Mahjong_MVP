@@ -43,7 +43,7 @@ namespace Mahjong.View
         {
             var rect = UIFactory.CreateRect("HandView", parent);
             UIFactory.Anchor(rect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 24f), new Vector2(1800f, 210f));
+                             new Vector2(0f, 16f), new Vector2(1800f, 180f));
 
             var view = rect.gameObject.AddComponent<HandView>();
             view.Build();
@@ -56,13 +56,14 @@ namespace Mahjong.View
             UIFactory.Anchor(handRow, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                              new Vector2(0f, 0f), new Vector2(1800f, TileSize.y + SelectedLift));
 
+            // 副露靠右、花牌靠左，都排在手牌上方，不會蓋到動作按鈕
             meldRow = UIFactory.CreateRect("MeldRow", transform);
             UIFactory.Anchor(meldRow, new Vector2(1f, 1f), new Vector2(1f, 1f),
-                             new Vector2(0f, 0f), new Vector2(900f, MeldTileSize.y));
+                             new Vector2(-10f, -6f), new Vector2(900f, MeldTileSize.y));
 
             flowerRow = UIFactory.CreateRect("FlowerRow", transform);
             UIFactory.Anchor(flowerRow, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                             new Vector2(0f, 0f), new Vector2(600f, FlowerTileSize.y));
+                             new Vector2(10f, -8f), new Vector2(600f, FlowerTileSize.y));
 
             flowerLabel = UIFactory.CreateText("FlowerLabel", flowerRow, "", 20,
                                                new Color(0.85f, 0.85f, 0.80f), TextAnchor.MiddleLeft);

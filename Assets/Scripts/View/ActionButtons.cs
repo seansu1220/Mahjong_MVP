@@ -29,9 +29,10 @@ namespace Mahjong.View
 
         public static ActionButtons Create(Transform parent)
         {
+            // 擺在手牌與自己牌河之間的那條帶狀空間（畫面中心往下 278）
             var rect = UIFactory.CreateRect("ActionButtons", parent);
-            UIFactory.Anchor(rect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 250f), new Vector2(1200f, ButtonSize.y));
+            UIFactory.Anchor(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                             new Vector2(0f, -278f), new Vector2(1200f, ButtonSize.y));
 
             var view = rect.gameObject.AddComponent<ActionButtons>();
             view.Hide();
