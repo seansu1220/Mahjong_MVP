@@ -356,3 +356,105 @@ Unity 2022.3.22f1 專案搬入，建置目標已設為 WebGL（`webGLThreadsSupp
 - 12 局 AI 對戰完整跑完，全程牌數守恆，且多數牌局能打到有人胡牌
 
 **測試結果：91 項全數通過，整套執行約 1 秒。**
+
+---
+
+## 2026-08-22（第五次）　Unity 畫面層
+
+### 一、新增 Assets/Scripts/View/（七個檔案）
+
+**修改內容**
+全部用程式建立 UI，場景裡不需放任何物件，也不需要到 Inspector 拖拉引用或建立 Prefab。
+
+| 檔案 | 職責 |
+|---|---|
+| `Bootstrap.cs` | 進入點。以 `RuntimeInitializeOnLoadMethod` 自動啟動，自建 Canvas 與 EventSystem，驅動 TurnEngine 主迴圈 |
+| `UIFactory.cs` | 建立 uGUI 元件的共用工具，另含字型解析 `UiFont` |
+| `TileView.cs` | 一張牌的外觀，程式繪製，不使用任何外部圖片素材 |
+| `HandView.cs` | 玩家手牌。兩段式點擊出牌（點一下選取、再點打出），並顯示副露與花牌 |
+| `TableView.cs` | 三家對手、四家牌河、圈風／莊家／牌山剩餘 |
+| `ActionButtons.cs` | 吃碰槓胡按鈕，內容完全由 TurnEngine 給的合法動作決定 |
+| `ResultView.cs` | 結算畫面，台數直接取自 ScoreCalculator |
+
+規則判定一條都沒寫在 View 層：能不能碰、吃有幾種組法、誰優先，全部問 `TurnEngine`。
+非同步只用 coroutine，且只出現在 `Bootstrap`。
+
+---
+
+### 二、`Arial.ttf` 備援會讓整個 UI 崩潰
+
+**問題描述**
+字型解析的備援寫成「`LegacyRuntime.ttf` 取不到就改用 `Arial.ttf`」。
+
+**根本原因**
+Unity 2022 起 `Resources.GetBuiltinResource<Font>("Arial.ttf")` **會拋出 `ArgumentException`**
+而不是回傳 null（錯誤訊息：Arial.ttf is no longer a valid built in font）。
+一旦走到備援那行，例外會往上炸掉整個 UI 建構流程。
+
+**修改內容**
+`Assets/Scripts/View/UIFactory.cs`：移除 `Arial.ttf` 備援，只用 `LegacyRuntime.ttf` 並以
+try/catch 包住，取不到時發出警告並回傳 null，不讓 UI 崩潰。
+
+---
+
+### 三、圓角圖取到 null，牌變成直角方塊
+
+**問題描述**
+牌面與按鈕的圓角來自 `Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd")`，
+實測回傳 null。
+
+**根本原因**
+`UI/Skin/UISprite` 是編輯器資源，執行期取不到。`Image.sprite` 為 null 時會退化成直角方塊，
+不會報錯，所以很難查。WebGL 上同樣取不到。
+
+**修改內容**
+`Assets/Scripts/View/UIFactory.cs`：改為程式產生 32×32、圓角半徑 8 的帶消鋸齒九宮格圖
+（`CreateRoundedSprite`），不依賴任何內建或外部資源，WebGL 上也保證有圓角。
+
+---
+
+### 四、Build Settings 場景清單為空
+
+**問題描述**
+`ProjectSettings/EditorBuildSettings.asset` 的 `m_Scenes` 是空陣列。
+
+**根本原因**
+Unity 新專案預設不會把場景加入建置清單。編輯器裡按 Play 不受影響，
+但 WebGL 建置會產出空白的 app，且要到建置後才會發現。
+
+**修改內容**
+將 `Assets/Scenes/SampleScene.unity` 加入 `m_Scenes`。
+
+---
+
+### 五、中文字型：目前狀態與 WebGL 待辦
+
+牌面要顯示萬筒條與東南西北中發白，`UiFont` 採三段解析：
+
+1. `Assets/Resources/MahjongFont.ttf`（專案內自備）—— **WebGL 唯一可行的方式**
+2. 作業系統字型（實測本機找到 `Microsoft JhengHei UI`）—— 編輯器與桌機版可用
+3. Unity 內建 `LegacyRuntime.ttf` —— 只有英數字，牌面自動改用英文代號（`5W`／`E`／`C`）
+
+**目前在編輯器按 Play 會走第 2 條，中文正常顯示。**
+但 WebGL 取不到系統字型，會掉到第 3 條變成英文代號。
+
+**部署前待辦**：把一個中文字型放到 `Assets/Resources/MahjongFont.ttf`。
+建議用 **Noto Sans TC**（SIL OFL 授權，可商用且無 share-alike 風險，
+不像外部麻將牌圖多為 CC BY-SA）。實測本機已安裝 Noto Sans TC。
+字型檔偏大時可先做字元子集，只保留牌面會用到的數十個字。
+
+---
+
+### 六、驗證方式
+
+以 Unity 2022.3.22f1 批次模式編譯：**0 錯誤、0 警告**。
+另寫臨時編輯器腳本實際執行，確認：
+
+- `LegacyRuntime.ttf` 取得成功
+- 程式產生的圓角圖為 32×32、九宮格邊界 (8,8,8,8)、格式 RGBA32
+- 系統字型 406 個，`Microsoft JhengHei`／`Noto Sans TC` 皆存在
+- `UiFont` 解析結果為「系統字型 Microsoft JhengHei UI」，支援中文為 true
+
+驗證後已刪除該臨時腳本。Core 測試維持 **91 項全綠**。
+
+> 版面配置與實際操作手感無法在批次模式驗證，需在編輯器按 Play 確認。

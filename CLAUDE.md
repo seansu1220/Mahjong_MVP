@@ -151,7 +151,8 @@ cd tools/CoreTests && dotnet run
 - [x] GameState.cs
 - [x] TurnEngine.cs
 - [x] ShantenCalculator.cs / AIPlayer.cs
-- [ ] TileView.cs
-- [ ] Bootstrap.cs / TableView.cs / HandView.cs / ActionButtons.cs
-- [ ] ResultView.cs
+- [x] TileView.cs
+- [x] Bootstrap.cs / TableView.cs / HandView.cs / ActionButtons.cs
+- [x] ResultView.cs
+- [ ] 中文字型 Assets/Resources/MahjongFont.ttf（WebGL 必需，見 docs/CHANGELOG.md）
 - [ ] WebGL build 與 Firebase 部署
