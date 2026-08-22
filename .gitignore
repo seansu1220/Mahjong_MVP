@@ -32,3 +32,10 @@ crashlytics-build.properties
 
 # ---- 環境 ----
 .env
+
+# ---- 例外：tools/ 底下的離線測試專案要進版控 ----
+# 上面的 *.csproj 是為了排除 Unity 自動產生的專案檔，
+# 但 tools/CoreTests 是我們手寫的，必須保留。
+!tools/**/*.csproj
+tools/**/[Bb]in/
+tools/**/[Oo]bj/

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    規則引擎的離線測試跑道。
+    Assets/Scripts/Core 底下是純 C#（不含 UnityEngine），所以可以不開 Unity 直接跑。
+    用法：cd tools/CoreTests && dotnet run
+    這個資料夾不在 Assets/ 內，Unity 完全不會編譯到它，不影響 WebGL 建置。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>CoreTests</AssemblyName>
+    <RootNamespace>Mahjong.CoreTests</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\Assets\Scripts\Core\**\*.cs">
+      <Link>Core\%(Filename)%(Extension)</Link>
+    </Compile>
+    <Compile Include="..\..\Assets\Scripts\Tests\**\*.cs">
+      <Link>Tests\%(Filename)%(Extension)</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>
