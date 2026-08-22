@@ -117,6 +117,18 @@ AI 模擬一律用 `GameState.Clone()`，不得直接改動真實局面。
 
 ---
 
+### 規則引擎測試
+
+改動 `Assets/Scripts/Core/` 後，**不需開 Unity** 即可驗證：
+
+```
+cd tools/CoreTests && dotnet run
+```
+
+全綠才算通過。`tools/` 在 `Assets/` 之外，Unity 不會編譯到，不影響 WebGL 建置。
+
+---
+
 ## 規則備忘（台灣 16 張）
 
 - 144 張：數牌字牌各 4 張，花牌 8 張各 1 張
@@ -133,8 +145,10 @@ AI 模擬一律用 `GameState.Clone()`，不得直接改動真實局面。
 
 - [x] MahjongCore.cs（牌定義、胡牌判定、聽牌、牌山）
 - [x] ScoreCalculator.cs（台數計算）
-- [x] MahjongTests.cs（單元測試）
-- [ ] GameState.cs
+- [x] MahjongTests.cs（單元測試，41 項全綠）
+- [x] 規則定案（見 `docs/RULES.md`）
+- [x] Unity 2022.3.22f1 專案骨架 + WebGL 建置目標
+- [x] GameState.cs
 - [ ] TurnEngine.cs
 - [ ] ShantenCalculator.cs / AIPlayer.cs
 - [ ] TileView.cs
