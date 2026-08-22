@@ -23,6 +23,7 @@
 .vscode/
 .consulo/
 sysinfo.txt
+.vsconfig
 
 # ---- Unity 產生的 crash / 授權 ----
 crashlytics-build.properties
