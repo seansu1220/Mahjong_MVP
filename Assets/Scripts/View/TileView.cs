@@ -33,6 +33,8 @@ namespace Mahjong.View
 
         static readonly Color SelectedFace = new Color(1f, 0.95f, 0.74f);
         static readonly Color SelectedBody = new Color(0.82f, 0.72f, 0.44f);
+        static readonly Color ClaimFace = new Color(0.79f, 0.93f, 1f);
+        static readonly Color ClaimBody = new Color(0.52f, 0.72f, 0.86f);
         static readonly Color DimFace = new Color(0.74f, 0.73f, 0.70f);
         static readonly Color DimBody = new Color(0.58f, 0.57f, 0.54f);
 
@@ -192,6 +194,16 @@ namespace Mahjong.View
         {
             if (!faceUp) return;
             ApplyColors(selected ? SelectedFace : FaceColor, selected ? SelectedBody : BodyColor);
+        }
+
+        /// <summary>
+        /// 叫牌提示：有得吃或碰時，把手上會湊成那一組的牌標起來，
+        /// 讓玩家看清楚按下去會用掉哪幾張。用冷色跟「已選取」的暖色區隔。
+        /// </summary>
+        public void SetClaimHighlight(bool highlighted)
+        {
+            if (!faceUp) return;
+            ApplyColors(highlighted ? ClaimFace : FaceColor, highlighted ? ClaimBody : BodyColor);
         }
 
         /// <summary>不能點時整張變灰，讓玩家一眼看出現在不是他的回合。</summary>

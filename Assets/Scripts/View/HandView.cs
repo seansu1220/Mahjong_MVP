@@ -11,17 +11,22 @@ namespace Mahjong.View
     // 互動方式：點一下選取（牌會抬起來），再點同一張才打出。
     // 兩段式是為了避免手滑打錯牌。
     //
+    // 選取記的是「哪一張」而不是「哪一種」——手上有兩張五萬時，
+    // 點左邊那張只有左邊那張會抬起來。
+    //
     // View 層只負責顯示與捕捉點擊，要不要能打、打了會怎樣一律交給 Bootstrap 與 TurnEngine。
     // ============================================================
 
     public class HandView : MonoBehaviour
     {
-        public static readonly Vector2 TileSize = new Vector2(64f, 88f);
+        public static readonly Vector2 TileSize = new Vector2(74f, 100f);
+        static readonly Vector2 MeldTileSize = new Vector2(56f, 76f);
+        static readonly Vector2 FlowerTileSize = new Vector2(42f, 57f);
+
         const float TileGap = 4f;
-        const float DrawnTileGap = 26f;   // 剛摸進來的那張跟其他牌隔開
-        const float SelectedLift = 16f;
-        static readonly Vector2 MeldTileSize = new Vector2(44f, 60f);
-        static readonly Vector2 FlowerTileSize = new Vector2(38f, 52f);
+        const float DrawnTileGap = 28f;   // 剛摸進來的那張跟其他牌隔開
+        const float SelectedLift = 18f;
+        const float ClaimLift = 12f;
 
         RectTransform handRow;
         RectTransform meldRow;
@@ -30,8 +35,9 @@ namespace Mahjong.View
 
         readonly List<TileView> handTiles = new List<TileView>();
         readonly List<GameObject> decorations = new List<GameObject>();
+        readonly HashSet<TileView> claimHighlights = new HashSet<TileView>();
 
-        int selectedTile = TileView.NoTile;
+        TileView selectedTileView;
         bool interactable;
 
         /// <summary>玩家確定要打出這張牌</summary>
@@ -43,7 +49,7 @@ namespace Mahjong.View
         {
             var rect = UIFactory.CreateRect("HandView", parent);
             UIFactory.Anchor(rect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 16f), new Vector2(1800f, 180f));
+                             new Vector2(0f, 4f), new Vector2(1840f, 198f));
 
             var view = rect.gameObject.AddComponent<HandView>();
             view.Build();
@@ -54,16 +60,16 @@ namespace Mahjong.View
         {
             handRow = UIFactory.CreateRect("HandRow", transform);
             UIFactory.Anchor(handRow, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 0f), new Vector2(1800f, TileSize.y + SelectedLift));
+                             Vector2.zero, new Vector2(1840f, TileSize.y + SelectedLift));
 
-            // 副露靠右、花牌靠左，都排在手牌上方，不會蓋到動作按鈕
+            // 副露靠右、花牌靠左，都排在手牌正上方，不會蓋到動作按鈕
             meldRow = UIFactory.CreateRect("MeldRow", transform);
             UIFactory.Anchor(meldRow, new Vector2(1f, 1f), new Vector2(1f, 1f),
-                             new Vector2(-10f, -6f), new Vector2(900f, MeldTileSize.y));
+                             new Vector2(-10f, -2f), new Vector2(1100f, MeldTileSize.y));
 
             flowerRow = UIFactory.CreateRect("FlowerRow", transform);
             UIFactory.Anchor(flowerRow, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                             new Vector2(10f, -8f), new Vector2(600f, FlowerTileSize.y));
+                             new Vector2(10f, -10f), new Vector2(620f, FlowerTileSize.y));
 
             flowerLabel = UIFactory.CreateText("FlowerLabel", flowerRow, "", 20,
                                                new Color(0.85f, 0.85f, 0.80f), TextAnchor.MiddleLeft);
@@ -78,7 +84,8 @@ namespace Mahjong.View
         {
             if (player == null) throw new ArgumentNullException(nameof(player));
 
-            selectedTile = TileView.NoTile;
+            selectedTileView = null;
+            claimHighlights.Clear();
             ClearChildren();
 
             var ordered = BuildOrderedHand(player, justDrawnTile);
@@ -134,7 +141,7 @@ namespace Mahjong.View
                 for (int t = tiles.Length - 1; t >= 0; t--)
                 {
                     cursor -= MeldTileSize.x + 2f;
-                    // 暗槓蓋著兩張，讓人看得出是暗的
+                    // 暗槓蓋著頭尾兩張，讓人看得出是暗的
                     bool faceUp = !(meld.Type == MeldType.AnKan && (t == 0 || t == tiles.Length - 1));
                     var tileView = TileView.Create(meldRow, tiles[t], MeldTileSize, faceUp);
                     UIFactory.Anchor(tileView.Rect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
@@ -142,7 +149,7 @@ namespace Mahjong.View
                     tileView.SetInteractable(false);
                     decorations.Add(tileView.gameObject);
                 }
-                cursor -= 14f;   // 組與組之間留空
+                cursor -= 16f;   // 組與組之間留空
             }
         }
 
@@ -165,45 +172,86 @@ namespace Mahjong.View
         }
 
         // ------------------------------------------------------------
+        // 選取與出牌
+        // ------------------------------------------------------------
 
         void OnTileClicked(TileView tileView)
         {
             if (!interactable) return;
 
-            if (selectedTile == tileView.Tile)
+            // 點同一張第二次才真的打出
+            if (selectedTileView == tileView)
             {
-                var chosen = tileView.Tile;
-                selectedTile = TileView.NoTile;
+                int chosen = tileView.Tile;
+                selectedTileView = null;
                 if (TileChosen != null) TileChosen(chosen);
                 return;
             }
 
-            selectedTile = tileView.Tile;
-            RefreshSelectionVisuals();
+            selectedTileView = tileView;
+            RefreshTileVisuals();
         }
 
-        void RefreshSelectionVisuals()
+        /// <summary>
+        /// 三種狀態會互相覆蓋，套用順序固定為：
+        /// 可否點擊（含變灰） → 叫牌提示 → 已選取。
+        /// 叫牌提示必須蓋過灰底，因為考慮要不要碰的時候手牌本來就不能點。
+        /// </summary>
+        void RefreshTileVisuals()
         {
             foreach (var tileView in handTiles)
             {
-                bool selected = tileView.Tile == selectedTile;
-                tileView.SetSelected(selected);
+                bool isSelected = tileView == selectedTileView;
+                bool isClaimTile = claimHighlights.Contains(tileView);
 
+                tileView.SetInteractable(interactable);
+                if (isClaimTile) tileView.SetClaimHighlight(true);
+                if (isSelected) tileView.SetSelected(true);
+
+                float lift = isSelected ? SelectedLift : (isClaimTile ? ClaimLift : 0f);
                 var position = tileView.Rect.anchoredPosition;
-                position.y = selected ? SelectedLift : 0f;
+                position.y = lift;
                 tileView.Rect.anchoredPosition = position;
             }
         }
 
+        // ------------------------------------------------------------
+        // 叫牌提示
+        // ------------------------------------------------------------
+
+        /// <summary>
+        /// 標出手上會被拿去湊成那一組的牌。
+        /// tileCounts 是長度 34 的計數陣列，某張要標幾張就填幾。
+        /// 傳 null 表示清掉提示。
+        /// </summary>
+        public void SetClaimHighlight(int[] tileCounts)
+        {
+            claimHighlights.Clear();
+
+            if (tileCounts != null)
+            {
+                var remaining = (int[])tileCounts.Clone();
+                foreach (var tileView in handTiles)
+                {
+                    int tile = tileView.Tile;
+                    if (tile < 0 || tile >= TileDef.KINDS || remaining[tile] <= 0) continue;
+                    remaining[tile]--;
+                    claimHighlights.Add(tileView);
+                }
+            }
+
+            RefreshTileVisuals();
+        }
+
+        public void ClearClaimHighlight() => SetClaimHighlight(null);
+
+        // ------------------------------------------------------------
+
         public void SetInteractable(bool value)
         {
             interactable = value;
-            foreach (var tileView in handTiles) tileView.SetInteractable(value);
-            if (!value)
-            {
-                selectedTile = TileView.NoTile;
-                RefreshSelectionVisuals();
-            }
+            if (!value) selectedTileView = null;
+            RefreshTileVisuals();
         }
 
         void ClearChildren()

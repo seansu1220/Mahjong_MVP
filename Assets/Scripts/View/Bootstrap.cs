@@ -45,6 +45,7 @@ namespace Mahjong.View
 
         GameAction pendingHumanAction;
         List<GameAction> humanTurnOptions;
+        int[] defaultClaimHighlight;
         int lastDrawnTile = TileView.NoTile;
         int dealerIndex;
         int dealerStreak;
@@ -83,6 +84,7 @@ namespace Mahjong.View
 
             actionButtons = ActionButtons.Create(canvas.transform);
             actionButtons.ActionChosen += OnHumanActionChosen;
+            actionButtons.ActionHovered += OnHumanActionHovered;
 
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
@@ -375,11 +377,17 @@ namespace Mahjong.View
             humanTurnOptions = null;
 
             SetStatus(UiFont.SupportsChinese ? "要不要叫牌？" : "Claim the discard?");
+
+            // 先把所有可叫動作會用到的牌標起來，滑到個別按鈕上再縮小到那一組
+            defaultClaimHighlight = BuildDefaultHighlight(options);
+            handView.SetClaimHighlight(defaultClaimHighlight);
             actionButtons.Show(options);
 
             while (pendingHumanAction == null) yield return null;
 
             actionButtons.Hide();
+            defaultClaimHighlight = null;
+            handView.ClearClaimHighlight();
             SetStatus("");
         }
 
@@ -395,6 +403,66 @@ namespace Mahjong.View
         }
 
         void OnHumanActionChosen(GameAction action) => pendingHumanAction = action;
+
+        // ------------------------------------------------------------
+        // 叫牌提示：標出手上會被拿去湊的牌
+        // ------------------------------------------------------------
+
+        /// <summary>滑鼠移到某個叫牌按鈕上時，只標那個動作要用到的牌；移開則回到全部候選。</summary>
+        void OnHumanActionHovered(GameAction action)
+        {
+            if (action != null)
+            {
+                handView.SetClaimHighlight(TilesUsedBy(action));
+                return;
+            }
+            handView.SetClaimHighlight(defaultClaimHighlight);
+        }
+
+        /// <summary>把所有可叫的動作會用到的牌合起來，取每張需要最多的那個數量。</summary>
+        static int[] BuildDefaultHighlight(List<GameAction> options)
+        {
+            var merged = new int[TileDef.KINDS];
+            bool any = false;
+
+            foreach (var option in options)
+            {
+                var used = TilesUsedBy(option);
+                if (used == null) continue;
+                any = true;
+                for (int tile = 0; tile < TileDef.KINDS; tile++)
+                    if (used[tile] > merged[tile]) merged[tile] = used[tile];
+            }
+            return any ? merged : null;
+        }
+
+        /// <summary>某個叫牌動作會從手上拿走哪幾張。胡牌用到整副手牌，不特別標。</summary>
+        static int[] TilesUsedBy(GameAction action)
+        {
+            if (action == null) return null;
+            var used = new int[TileDef.KINDS];
+
+            switch (action.Type)
+            {
+                case ActionType.Pon:
+                    used[action.Tile] = 2;
+                    return used;
+
+                case ActionType.MinKan:
+                    used[action.Tile] = 3;
+                    return used;
+
+                case ActionType.Chi:
+                    for (int offset = 0; offset < 3; offset++)
+                    {
+                        int tile = action.ChiBaseTile + offset;
+                        if (tile != action.Tile) used[tile]++;
+                    }
+                    return used;
+
+                default: return null;   // 胡、槓（自己回合）與過牌不需要標
+            }
+        }
 
         // ------------------------------------------------------------
         // 結算

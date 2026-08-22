@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Mahjong.View
@@ -14,7 +15,7 @@ namespace Mahjong.View
 
     public class ActionButtons : MonoBehaviour
     {
-        static readonly Vector2 ButtonSize = new Vector2(132f, 62f);
+        static readonly Vector2 ButtonSize = new Vector2(132f, 60f);
         const float ButtonGap = 12f;
 
         static readonly Color WinColor = new Color(0.78f, 0.22f, 0.20f);
@@ -27,12 +28,18 @@ namespace Mahjong.View
         /// <summary>玩家選了某個動作</summary>
         public event Action<GameAction> ActionChosen;
 
+        /// <summary>
+        /// 滑鼠移到某個動作上（移開時傳 null）。
+        /// 用來讓手牌標出這個動作會用掉哪幾張牌。
+        /// </summary>
+        public event Action<GameAction> ActionHovered;
+
         public static ActionButtons Create(Transform parent)
         {
-            // 擺在手牌與自己牌河之間的那條帶狀空間（畫面中心往下 278）
+            // 擺在手牌頂端（-338）與牌山下排（-266）之間僅有的那條空隙
             var rect = UIFactory.CreateRect("ActionButtons", parent);
             UIFactory.Anchor(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, -278f), new Vector2(1200f, ButtonSize.y));
+                             new Vector2(0f, -302f), new Vector2(1200f, ButtonSize.y));
 
             var view = rect.gameObject.AddComponent<ActionButtons>();
             view.Hide();
@@ -62,12 +69,31 @@ namespace Mahjong.View
                                                     () => { if (ActionChosen != null) ActionChosen(captured); });
                 UIFactory.Anchor((RectTransform)button.transform, new Vector2(0.5f, 0.5f),
                                  new Vector2(0f, 0.5f), new Vector2(cursor, 0f), ButtonSize);
+                AddHoverEvents(button.gameObject, captured);
                 buttons.Add(button.gameObject);
                 cursor += ButtonSize.x + ButtonGap;
             }
         }
 
-        public void Hide() => Clear();
+        public void Hide()
+        {
+            Clear();
+            if (ActionHovered != null) ActionHovered(null);
+        }
+
+        void AddHoverEvents(GameObject target, GameAction action)
+        {
+            var trigger = target.AddComponent<EventTrigger>();
+            trigger.triggers.Add(BuildEntry(EventTriggerType.PointerEnter, action));
+            trigger.triggers.Add(BuildEntry(EventTriggerType.PointerExit, null));
+        }
+
+        EventTrigger.Entry BuildEntry(EventTriggerType eventType, GameAction action)
+        {
+            var entry = new EventTrigger.Entry { eventID = eventType };
+            entry.callback.AddListener(_ => { if (ActionHovered != null) ActionHovered(action); });
+            return entry;
+        }
 
         void Clear()
         {
