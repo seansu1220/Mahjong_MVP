@@ -145,12 +145,12 @@ cd tools/CoreTests && dotnet run
 
 - [x] MahjongCore.cs（牌定義、胡牌判定、聽牌、牌山）
 - [x] ScoreCalculator.cs（台數計算）
-- [x] MahjongTests.cs（單元測試，74 項全綠）
+- [x] MahjongTests.cs（單元測試，91 項全綠）
 - [x] 規則定案（見 `docs/RULES.md`）
 - [x] Unity 2022.3.22f1 專案骨架 + WebGL 建置目標
 - [x] GameState.cs
 - [x] TurnEngine.cs
-- [ ] ShantenCalculator.cs / AIPlayer.cs
+- [x] ShantenCalculator.cs / AIPlayer.cs
 - [ ] TileView.cs
 - [ ] Bootstrap.cs / TableView.cs / HandView.cs / ActionButtons.cs
 - [ ] ResultView.cs

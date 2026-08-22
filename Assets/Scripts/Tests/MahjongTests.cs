@@ -56,6 +56,14 @@ namespace Mahjong.Tests
             t.TestIllegalActionsAreRejected();
             t.TestFullGameNoClaims();
             t.TestFullGameWithClaims();
+            t.TestShantenKnownHands();
+            t.TestShantenMatchesWinChecker();
+            t.TestShantenRejectsBadInput();
+            t.TestAiAlwaysWinsWhenPossible();
+            t.TestAiDiscardMinimisesShanten();
+            t.TestAiSkipsWorthlessClaim();
+            t.TestAiTakesUsefulClaim();
+            t.TestFullGameWithAi();
             t.Report();
             return t.failed == 0;
         }
@@ -760,6 +768,231 @@ namespace Mahjong.Tests
                 if (!ok) Log($"     ! seed {seed}：{failure}");
             }
             Assert(ok, "25 局完整跑到結束，全程牌數守恆（積極吃碰槓）");
+        }
+
+        // ---------- 向聽數 ----------
+
+        void TestShantenKnownHands()
+        {
+            // 5 順子 + 將，已經成胡
+            Assert(ShantenCalculator.Calculate(
+                Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 12,13,14, 27,27), 0) == ShantenCalculator.Winning,
+                "已成胡的手牌向聽數為 -1");
+
+            // 差一張東就成胡
+            Assert(ShantenCalculator.Calculate(
+                Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 12,13,14, 27), 0) == ShantenCalculator.Tenpai,
+                "單吊聽牌向聽數為 0");
+
+            // 4 組面子 + 將 + 兩面搭子，聽 4筒/7筒
+            Assert(ShantenCalculator.Calculate(
+                Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 27,27, 13,14), 0) == ShantenCalculator.Tenpai,
+                "兩面聽向聽數為 0");
+
+            // 把上面的兩面搭子拆成兩張孤張，就退一步
+            Assert(ShantenCalculator.Calculate(
+                Hand(0,1,2, 3,4,5, 6,7,8, 9,10,11, 27,27, 13,16), 0) == 1,
+                "少一組搭子時向聽數為 1");
+
+            // 已副露兩組，手中三組面子 + 將 -> 也是成胡
+            Assert(ShantenCalculator.Calculate(Hand(0,1,2, 3,4,5, 6,7,8, 27,27), 2)
+                   == ShantenCalculator.Winning,
+                "含副露的成胡手牌向聽數為 -1");
+
+            // 全部孤張，離聽牌最遠
+            Assert(ShantenCalculator.Calculate(
+                Hand(0,3,6, 9,12,15, 18,21,24, 27,28,29, 30,31,32, 33), 0) == 10,
+                "十六張全孤張時向聽數為最大值 10");
+        }
+
+        void TestShantenMatchesWinChecker()
+        {
+            // 向聽數與胡牌判定是兩套完全不同的算法，拿隨機手牌互相對照
+            var rng = new Random(20260822);
+            int mismatches = 0, examined = 0;
+
+            for (int trial = 0; trial < 5000; trial++)
+            {
+                int meldCount = rng.Next(0, 4);
+                int needSets = ShantenCalculator.TotalSets - meldCount;
+                bool fullHand = rng.Next(2) == 0;
+                int tileCount = needSets * 3 + (fullHand ? 2 : 1);
+
+                var hand = new int[TileDef.KINDS];
+                int placed = 0, guard = 0;
+                while (placed < tileCount && guard++ < 500)
+                {
+                    int tile = rng.Next(TileDef.KINDS);
+                    if (hand[tile] >= 4) continue;
+                    hand[tile]++; placed++;
+                }
+                if (placed < tileCount) continue;
+
+                int shanten = ShantenCalculator.Calculate(hand, meldCount);
+                examined++;
+
+                bool expected = fullHand
+                    ? WinChecker.CanWin(hand, meldCount)
+                    : WinChecker.IsTenpai(hand, meldCount);
+                bool actual = fullHand
+                    ? shanten == ShantenCalculator.Winning
+                    : shanten == ShantenCalculator.Tenpai;
+
+                if (expected != actual) mismatches++;
+            }
+
+            Assert(examined > 4000, "隨機手牌樣本數足夠");
+            Assert(mismatches == 0, $"{examined} 副隨機手牌的向聽數與 WinChecker 判定完全一致");
+        }
+
+        void TestShantenRejectsBadInput()
+        {
+            bool wrongLength = false, tooManyMelds = false;
+            try { ShantenCalculator.Calculate(new int[10], 0); }
+            catch (ArgumentException) { wrongLength = true; }
+            try { ShantenCalculator.Calculate(new int[TileDef.KINDS], 9); }
+            catch (ArgumentOutOfRangeException) { tooManyMelds = true; }
+
+            Assert(wrongLength, "計數陣列長度錯誤要拋出說明清楚的例外");
+            Assert(tooManyMelds, "副露組數超過 5 要拋出說明清楚的例外");
+        }
+
+        // ---------- 電腦玩家 ----------
+
+        void TestAiAlwaysWinsWhenPossible()
+        {
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], WinsOnEastHand);
+            SetPendingDiscard(state, discarder: 0, tile: 27);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var ai = new AIPlayer(1);
+            var choice = ai.ChooseClaimAction(state, engine.GetClaimActions(1));
+
+            Assert(choice != null && choice.Type == ActionType.Win, "能胡就一定胡，不做見逃");
+        }
+
+        void TestAiDiscardMinimisesShanten()
+        {
+            // AI 選的那張，打完之後的向聽數必須是所有選擇裡最小的
+            bool ok = true;
+            for (int seed = 1; seed <= 8 && ok; seed++)
+            {
+                var state = GameState.CreateNewHand(0, seed: seed);
+                var engine = new TurnEngine(state, FanTable.Default());
+                var ai = new AIPlayer(0, seed);
+
+                var chosen = ai.ChooseTurnAction(state, engine.GetTurnActions(0));
+                if (chosen == null || chosen.Type != ActionType.Discard) continue;
+
+                var hand = (int[])state.Players[0].ConcealedCounts.Clone();
+                int meldCount = state.Players[0].Melds.Count;
+
+                hand[chosen.Tile]--;
+                int chosenShanten = ShantenCalculator.Calculate(hand, meldCount);
+                hand[chosen.Tile]++;
+
+                for (int tile = 0; tile < TileDef.KINDS && ok; tile++)
+                {
+                    if (hand[tile] == 0) continue;
+                    hand[tile]--;
+                    if (ShantenCalculator.Calculate(hand, meldCount) < chosenShanten) ok = false;
+                    hand[tile]++;
+                }
+            }
+            Assert(ok, "AI 出牌一律取向聽數最小的選擇");
+        }
+
+        void TestAiSkipsWorthlessClaim()
+        {
+            // 已經聽牌，吃了只會破壞牌型，AI 應該放過
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 0,1,2, 3,4,5, 6,7,8, 9,10,11, 27,27, 13,14);
+            SetPendingDiscard(state, discarder: 0, tile: 1);   // 打 2萬，下家吃得到
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            Assert(HasAction(engine.GetClaimActions(1), ActionType.Chi), "前提：這張確實吃得到");
+
+            var choice = new AIPlayer(1).ChooseClaimAction(state, engine.GetClaimActions(1));
+            Assert(choice != null && choice.Type == ActionType.Pass, "聽牌時不做沒賺頭的吃");
+        }
+
+        void TestAiTakesUsefulClaim()
+        {
+            // 一對東加上一堆孤張，碰下來實實在在推進牌型
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 27,27, 0,3,6, 9,12,15, 18,21,24, 28,29,30, 31,32);
+            SetPendingDiscard(state, discarder: 0, tile: 27);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var choice = new AIPlayer(1).ChooseClaimAction(state, engine.GetClaimActions(1));
+
+            Assert(choice != null && choice.Type == ActionType.Pon, "能推進牌型的碰要叫下來");
+        }
+
+        void TestFullGameWithAi()
+        {
+            int wins = 0;
+            bool ok = true;
+            string failure = null;
+
+            for (int seed = 1; seed <= 12 && ok; seed++)
+            {
+                var state = GameState.CreateNewHand(seed % GameState.PlayerCount, seed: seed);
+                var engine = new TurnEngine(state, FanTable.Default());
+                var players = new AIPlayer[GameState.PlayerCount];
+                for (int seat = 0; seat < GameState.PlayerCount; seat++)
+                    players[seat] = new AIPlayer(seat, seed * 10 + seat);
+
+                ok = RunGameWithAi(engine, players, out failure);
+                if (!ok) Log($"     ! seed {seed}：{failure}");
+                else if (state.EndReason == GameEndReason.Win) wins++;
+            }
+
+            Assert(ok, "12 局 AI 對戰完整跑完，全程牌數守恆");
+            Assert(wins >= 8, $"AI 大多數牌局能打到有人胡牌（12 局中胡了 {wins} 局）");
+        }
+
+        static bool RunGameWithAi(TurnEngine engine, AIPlayer[] players, out string failure)
+        {
+            failure = null;
+            var state = engine.State;
+
+            for (int step = 0; step < 3000 && state.Phase != GamePhase.Ended; step++)
+            {
+                TurnResult result;
+                if (state.Phase == GamePhase.WaitingDraw)
+                {
+                    result = engine.DrawForCurrentPlayer();
+                }
+                else if (state.Phase == GamePhase.WaitingDiscard)
+                {
+                    int seat = state.CurrentPlayer;
+                    var chosen = players[seat].ChooseTurnAction(state, engine.GetTurnActions(seat));
+                    if (chosen == null) { failure = $"座位 {seat} 的 AI 選不出動作"; return false; }
+                    result = engine.ApplyTurnAction(chosen);
+                }
+                else if (state.Phase == GamePhase.WaitingClaim)
+                {
+                    var declarations = new List<GameAction>();
+                    for (int seat = 0; seat < GameState.PlayerCount; seat++)
+                    {
+                        if (seat == state.LastDiscardFrom) continue;
+                        var choice = players[seat].ChooseClaimAction(state, engine.GetClaimActions(seat));
+                        if (choice != null && choice.Type != ActionType.Pass) declarations.Add(choice);
+                    }
+                    result = engine.ResolveClaims(declarations);
+                }
+                else { failure = $"非預期的階段 {state.Phase}"; return false; }
+
+                if (!result.Success) { failure = result.Error; return false; }
+
+                int total = TotalTilesInPlay(state);
+                if (total != 144) { failure = $"牌數不守恆，目前 {total} 張"; return false; }
+            }
+
+            if (state.Phase != GamePhase.Ended) { failure = "3000 步後牌局仍未結束"; return false; }
+            return true;
         }
     }
 }
