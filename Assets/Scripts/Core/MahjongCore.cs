@@ -130,6 +130,8 @@ namespace Mahjong
         /// </summary>
         public static bool CanWin(int[] hand, int meldCount)
         {
+            ValidateCountArray(hand, nameof(hand));
+
             int needSets = 5 - meldCount;
             if (needSets < 0) return false;
 
@@ -190,8 +192,16 @@ namespace Mahjong
         /// </summary>
         public static List<HandPattern> AllPatterns(int[] hand, int meldCount)
         {
+            ValidateCountArray(hand, nameof(hand));
+
             var results = new List<HandPattern>();
             int needSets = 5 - meldCount;
+            if (needSets < 0) return results;
+
+            // 與 CanWin 採相同的張數前提：3n+2。張數不符不是錯誤，只是不可能成牌。
+            int total = 0;
+            for (int i = 0; i < TileDef.KINDS; i++) total += hand[i];
+            if (total != needSets * 3 + 2) return results;
 
             for (int i = 0; i < TileDef.KINDS; i++)
             {
@@ -249,6 +259,8 @@ namespace Mahjong
         /// </summary>
         public static List<int> GetWaits(int[] hand, int meldCount)
         {
+            ValidateCountArray(hand, nameof(hand));
+
             var waits = new List<int>();
             for (int i = 0; i < TileDef.KINDS; i++)
             {
@@ -260,8 +272,50 @@ namespace Mahjong
             return waits;
         }
 
+        /// <summary>
+        /// 聽牌計算（扣除已知牌張版本）。
+        /// 上面的多載只看手中張數，會把「世上已經沒有第 5 張」的牌也列為聽張，
+        /// 例如自己槓掉四張九筒後仍聽九筒，那是死聽，永遠不會進張。
+        /// 這個多載把自己的副露與場上可見牌（牌河、他家副露）一併扣掉。
+        /// </summary>
+        /// <param name="hand">手中未副露的牌，長度 34 的計數陣列</param>
+        /// <param name="melds">自己的副露，null 視為門清</param>
+        /// <param name="visibleCounts">場上已可見的牌張數，長度 34；可傳 null</param>
+        public static List<int> GetWaits(int[] hand, List<Meld> melds, int[] visibleCounts = null)
+        {
+            ValidateCountArray(hand, nameof(hand));
+            if (visibleCounts != null) ValidateCountArray(visibleCounts, nameof(visibleCounts));
+
+            var usedInMelds = new int[TileDef.KINDS];
+            if (melds != null)
+                foreach (var meld in melds)
+                    foreach (var tile in meld.Tiles())
+                        if (tile < TileDef.KINDS) usedInMelds[tile]++;
+
+            var reachableWaits = new List<int>();
+            foreach (int candidate in GetWaits(hand, melds == null ? 0 : melds.Count))
+            {
+                int alreadyAccountedFor = hand[candidate] + usedInMelds[candidate]
+                                        + (visibleCounts == null ? 0 : visibleCounts[candidate]);
+                if (alreadyAccountedFor < TILES_PER_KIND) reachableWaits.Add(candidate);
+            }
+            return reachableWaits;
+        }
+
         public static bool IsTenpai(int[] hand, int meldCount)
             => GetWaits(hand, meldCount).Count > 0;
+
+        /// <summary>每種牌的張數（花牌除外）</summary>
+        public const int TILES_PER_KIND = 4;
+
+        static void ValidateCountArray(int[] counts, string paramName)
+        {
+            if (counts == null)
+                throw new ArgumentNullException(paramName, "計數陣列不可為 null");
+            if (counts.Length != TileDef.KINDS)
+                throw new ArgumentException(
+                    $"計數陣列長度必須為 {TileDef.KINDS}（不含花牌），實際為 {counts.Length}", paramName);
+        }
     }
 
     public class SetInfo
@@ -283,16 +337,29 @@ namespace Mahjong
 
     public class Wall
     {
+        // 隨機開局時用來產生種子。WebGL 為單執行緒，此靜態狀態不會有競爭問題。
+        static readonly Random SeedSource = new Random();
+
         readonly List<int> tiles = new List<int>();
         readonly Random rng;
-        int drawIndex = 0;
+        int drawIndex = 0;   // 下一張從牌頭摸的位置
+        int tailIndex;       // 下一張從牌尾補的位置
 
+        /// <summary>
+        /// 本副牌實際使用的亂數種子。
+        /// 即使建構時傳 0（隨機開局），這裡也會記下真正用到的種子，
+        /// 之後把它傳回建構子即可完整重現同一副牌——除錯與向客戶重演牌局都靠它。
+        /// </summary>
+        public int Seed { get; private set; }
+
+        /// <param name="seed">0 代表隨機開局；非 0 則固定牌山，可重現。</param>
         public Wall(int seed = 0, bool includeFlowers = true)
         {
-            rng = seed == 0 ? new Random() : new Random(seed);
+            Seed = seed != 0 ? seed : SeedSource.Next(1, int.MaxValue);
+            rng = new Random(Seed);
 
             for (int i = 0; i < TileDef.KINDS; i++)
-                for (int c = 0; c < 4; c++)
+                for (int c = 0; c < WinChecker.TILES_PER_KIND; c++)
                     tiles.Add(i);
 
             if (includeFlowers)
@@ -300,6 +367,7 @@ namespace Mahjong
                     tiles.Add(TileDef.FLOWER_BASE + i);
 
             Shuffle();
+            tailIndex = tiles.Count - 1;
         }
 
         void Shuffle()
@@ -311,13 +379,24 @@ namespace Mahjong
             }
         }
 
-        public int Remaining => tiles.Count - drawIndex;
+        public int Remaining => tailIndex - drawIndex + 1;
         public bool IsEmpty => Remaining <= 0;
 
+        /// <summary>從牌頭正常摸牌</summary>
         public int Draw()
         {
-            if (IsEmpty) throw new InvalidOperationException("牌山已空");
+            if (IsEmpty) throw new InvalidOperationException("牌山已空，無法摸牌");
             return tiles[drawIndex++];
+        }
+
+        /// <summary>
+        /// 從牌尾補牌。台灣麻將的補花與槓後補牌都從牌山尾端取，
+        /// 不能用 Draw()，否則摸牌順序會錯亂。
+        /// </summary>
+        public int DrawFromTail()
+        {
+            if (IsEmpty) throw new InvalidOperationException("牌山已空，無法補牌");
+            return tiles[tailIndex--];
         }
     }
 }

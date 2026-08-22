@@ -54,6 +54,21 @@ namespace Mahjong
         public int BaseDi = 100;   // 底
         public int PerTai = 100;   // 每台
 
+        // ------------------------------------------------------------
+        // 以下三項各地規則差異極大，必須與客戶逐條確認。
+        // 預設值刻意維持原型既有行為，改規則只需改這裡，不動 ScoreCalculator。
+        // ------------------------------------------------------------
+
+        /// <summary>正花是否在「每張花 1 台」之外再另計一次。
+        /// true = 一張正花共 2 台；false = 所有花牌一律 1 台。</summary>
+        public bool ZhengHuaStacksWithFlower = true;
+
+        /// <summary>成立大四喜／小四喜時，是否仍另計門風、圈風。</summary>
+        public bool WindTilesCountWithBigWinds = false;
+
+        /// <summary>成立大三元／小三元時，是否仍另計三元牌。</summary>
+        public bool DragonTilesCountWithBigDragons = false;
+
         public readonly Dictionary<FanId, FanRule> Rules = new Dictionary<FanId, FanRule>();
 
         public static FanTable Default()
@@ -84,7 +99,7 @@ namespace Mahjong
             Add(FanId.GangShangKaiHua, "槓上開花", 1);
             Add(FanId.HaiDiLaoYue, "海底撈月", 1);
             Add(FanId.Zhuang, "莊家", 1);
-            Add(FanId.LianZhuang, "連莊拉莊", 2);
+            Add(FanId.LianZhuang, "連莊拉莊", 2);   // 每連莊 1 次的台數（連 N 拉 N = 2N 台）
             return t;
         }
 
@@ -127,6 +142,8 @@ namespace Mahjong
     {
         public static ScoreResult Calculate(WinContext ctx, FanTable table)
         {
+            ValidateContext(ctx, table);
+
             var result = new ScoreResult();
 
             // 組出完整 17 張的計數陣列
@@ -147,6 +164,23 @@ namespace Mahjong
             return best;
         }
 
+        static void ValidateContext(WinContext ctx, FanTable table)
+        {
+            if (ctx == null) throw new ArgumentNullException(nameof(ctx), "胡牌情境不可為 null");
+            if (table == null) throw new ArgumentNullException(nameof(table), "台數表不可為 null");
+
+            if (ctx.ConcealedHand == null)
+                throw new ArgumentException("WinContext.ConcealedHand 不可為 null", nameof(ctx));
+            if (ctx.ConcealedHand.Length != TileDef.KINDS)
+                throw new ArgumentException(
+                    $"WinContext.ConcealedHand 長度必須為 {TileDef.KINDS}（不含花牌），實際為 {ctx.ConcealedHand.Length}",
+                    nameof(ctx));
+            if (ctx.WinningTile < 0 || ctx.WinningTile >= TileDef.KINDS)
+                throw new ArgumentException(
+                    $"WinContext.WinningTile 必須是 0~{TileDef.KINDS - 1} 的牌 id（花牌不能當胡牌張），實際為 {ctx.WinningTile}",
+                    nameof(ctx));
+        }
+
         static ScoreResult ScorePattern(HandPattern p, WinContext ctx, FanTable t, int[] full)
         {
             var res = new ScoreResult();
@@ -159,8 +193,21 @@ namespace Mahjong
 
             bool concealed = ctx.Melds.All(m => m.IsConcealed);
 
-            // 所有面子（手中 + 副露）
-            var allSets = new List<SetInfo>(p.Sets);
+            // 所有面子（手中 + 副露）。
+            // p.Sets 裡的 SetInfo 會被多種拆解方式共用同一個物件，
+            // 直接改會汙染其他拆法，所以一律複製一份再處理。
+            var allSets = new List<SetInfo>();
+            foreach (var handSet in p.Sets)
+                allSets.Add(new SetInfo
+                {
+                    IsTriplet = handSet.IsTriplet,
+                    BaseTile = handSet.BaseTile,
+                    Concealed = handSet.Concealed
+                });
+
+            // 放槍胡：胡的那張是別人打出來的，該張所在的面子算「明」，不能當暗刻。
+            if (!ctx.IsSelfDraw) MarkWinningSetAsExposed(allSets, ctx.WinningTile);
+
             foreach (var m in ctx.Melds)
                 allSets.Add(new SetInfo
                 {
@@ -176,12 +223,14 @@ namespace Mahjong
             if (ctx.IsSelfDraw) Add(FanId.Zimo);
             if (concealed && ctx.IsSelfDraw) Add(FanId.MenqingZimo);
             if (ctx.IsDealer) Add(FanId.Zhuang);
-            if (ctx.DealerStreak > 0) Add(FanId.LianZhuang, ctx.DealerStreak * 2 - 1);
+            // 連莊拉莊 = 連莊次數 × 每次台數。台數值由 FanTable 決定，程式不寫死數字。
+            if (ctx.DealerStreak > 0) Add(FanId.LianZhuang, ctx.DealerStreak);
 
             // ---- 牌型 ----
             if (allTriplets) Add(FanId.Pengpenghu);
 
-            // 平胡：全順子、將非字牌、非自摸、兩面聽（各地差異大，此為常見版本）
+            // 平胡：全順子、將非字牌、非自摸。
+            // 註：部分規則另要求「兩面聽」與「無花」，此處尚未實作，待客戶確認台數表後再補。
             if (!allTriplets && allSets.All(s => !s.IsTriplet)
                 && !TileDef.IsHonor(p.PairTile) && !ctx.IsSelfDraw)
                 Add(FanId.Pinghu);
@@ -208,15 +257,20 @@ namespace Mahjong
             // ---- 字牌 ----
             int dragonTriplets = allSets.Count(s => s.IsTriplet && TileDef.IsDragon(s.BaseTile));
             bool dragonPair = TileDef.IsDragon(p.PairTile);
-            if (dragonTriplets == 3) Add(FanId.Dasanyuan);
-            else if (dragonTriplets == 2 && dragonPair) Add(FanId.Xiaosanyuan);
-            else if (dragonTriplets > 0) Add(FanId.SanYuanPai, dragonTriplets);
+            bool bigDragonScored = false;
+            if (dragonTriplets == 3) { Add(FanId.Dasanyuan); bigDragonScored = true; }
+            else if (dragonTriplets == 2 && dragonPair) { Add(FanId.Xiaosanyuan); bigDragonScored = true; }
+
+            if (dragonTriplets > 0 && (!bigDragonScored || t.DragonTilesCountWithBigDragons))
+                Add(FanId.SanYuanPai, dragonTriplets);
 
             int windTriplets = allSets.Count(s => s.IsTriplet && TileDef.IsWind(s.BaseTile));
             bool windPair = TileDef.IsWind(p.PairTile);
-            if (windTriplets == 4) Add(FanId.Dasixi);
-            else if (windTriplets == 3 && windPair) Add(FanId.Xiaosixi);
-            else
+            bool bigWindScored = false;
+            if (windTriplets == 4) { Add(FanId.Dasixi); bigWindScored = true; }
+            else if (windTriplets == 3 && windPair) { Add(FanId.Xiaosixi); bigWindScored = true; }
+
+            if (!bigWindScored || t.WindTilesCountWithBigWinds)
             {
                 if (allSets.Any(s => s.IsTriplet && s.BaseTile == ctx.SeatWind)) Add(FanId.MenFeng);
                 if (allSets.Any(s => s.IsTriplet && s.BaseTile == ctx.RoundWind)) Add(FanId.QuanFeng);
@@ -233,7 +287,7 @@ namespace Mahjong
             // 獨聽：胡牌前僅聽一張
             var beforeWin = (int[])full.Clone();
             beforeWin[ctx.WinningTile]--;
-            if (WinChecker.GetWaits(beforeWin, ctx.Melds.Count).Count == 1) Add(FanId.Dudiao);
+            if (WinChecker.GetWaits(beforeWin, ctx.Melds).Count == 1) Add(FanId.Dudiao);
 
             // ---- 花牌 ----
             if (ctx.Flowers.Count > 0)
@@ -242,11 +296,28 @@ namespace Mahjong
                 // 正花：花牌序號對應座位（春夏秋冬 / 梅蘭竹菊 各對應東南西北）
                 int zheng = ctx.Flowers.Count(f =>
                     (f - TileDef.FLOWER_BASE) % 4 == ctx.SeatIndex);
-                if (zheng > 0) Add(FanId.ZhengHua, zheng);
+                if (zheng > 0 && t.ZhengHuaStacksWithFlower) Add(FanId.ZhengHua, zheng);
             }
 
             res.Points = t.BaseDi + res.TotalTai * t.PerTai;
             return res;
         }
+
+        /// <summary>
+        /// 把含胡牌張的「手中面子」標記為明（放槍胡專用）。
+        /// 同一牌型可能有多組面子含到胡牌張，優先標順子——
+        /// 這樣刻子仍保有暗刻身分，與本類別「多種拆法取台數最高」的既有慣例一致。
+        /// </summary>
+        static void MarkWinningSetAsExposed(List<SetInfo> handSets, int winningTile)
+        {
+            var target = handSets.FirstOrDefault(s => !s.IsTriplet && SetCovers(s, winningTile))
+                      ?? handSets.FirstOrDefault(s => s.IsTriplet && SetCovers(s, winningTile));
+            if (target != null) target.Concealed = false;
+        }
+
+        static bool SetCovers(SetInfo set, int tile)
+            => set.IsTriplet
+                ? set.BaseTile == tile
+                : tile >= set.BaseTile && tile <= set.BaseTile + 2;
     }
 }
