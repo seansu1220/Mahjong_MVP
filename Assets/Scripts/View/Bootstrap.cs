@@ -28,8 +28,10 @@ namespace Mahjong.View
         static readonly Color StatusColor = new Color(0.86f, 0.90f, 0.84f);
 
         const float AiThinkDelay = 0.30f;
-        const float DrawFlightDuration = 0.22f;
+        const float DrawFlightDuration = 0.5f;
         const float RevealPause = 1.1f;      // 攤牌後先讓玩家看一眼再蓋上結算視窗
+
+        WinningHandView winningHand;
 
         GameState state;
         TurnEngine engine;
@@ -86,6 +88,7 @@ namespace Mahjong.View
             actionButtons.ActionChosen += OnHumanActionChosen;
             actionButtons.ActionHovered += OnHumanActionHovered;
 
+            winningHand = WinningHandView.Create(canvas.transform);
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
             dealAnimation = DealAnimation.Create(canvas.transform);
@@ -106,10 +109,13 @@ namespace Mahjong.View
 
         void BuildStatusLabels(Transform parent)
         {
-            // 擺在上家資訊面板（y +310..+530）與上家牌河（y +40..+220）之間的空白帶
-            statusLabel = UIFactory.CreateText("Status", parent, "", 28, StatusColor);
-            UIFactory.Anchor(statusLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, 265f), new Vector2(900f, 38f));
+            // 原本擺在畫面中央上方，正好壓在牌山上排（y +234..+266）。
+            // 改釘到左下角、自己手牌的正上方——提示是給玩家看的，離手邊最近最好讀，
+            // 而且跟右下角的名牌、中間的動作按鈕左右分開，三者互不遮擋。
+            statusLabel = UIFactory.CreateText("Status", parent, "", 24, StatusColor,
+                                               TextAnchor.MiddleLeft);
+            UIFactory.Anchor(statusLabel.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f),
+                             new Vector2(24f, 212f), new Vector2(400f, 34f));
 
             var fontNotice = UIFactory.CreateText("FontNotice", parent,
                                                   "字型：" + UiFont.SourceDescription, 17, HintColor,
@@ -129,7 +135,11 @@ namespace Mahjong.View
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+
+            // 鎖定高度：畫布的邏輯高度永遠是 1080，只有寬度隨畫面比例變化。
+            // 先前設 0.5 會同時參考寬高，畫面比 16:9 寬時邏輯高度會縮到 1080 以下，
+            // 釘在上方的對家名牌就被擠出可視範圍了。
+            scaler.matchWidthOrHeight = 1f;
             return canvas;
         }
 
@@ -159,6 +169,7 @@ namespace Mahjong.View
             humanTurnOptions = null;
             tableView.RevealHands = false;
             tableView.WinnerSeat = -1;
+            winningHand.Hide();
             resultView.Hide();
 
             yield return PlayDealAnimation();
@@ -381,7 +392,7 @@ namespace Mahjong.View
             pendingHumanAction = null;
             humanTurnOptions = engine.GetTurnActions(HumanSeat);
 
-            SetStatus(UiFont.SupportsChinese ? "輪到你出牌，點兩下打出" : "Your turn - tap twice to discard");
+            SetStatus(UiFont.SupportsChinese ? "輪到你出牌（點兩下打出）" : "Your turn: tap twice");
             actionButtons.Show(humanTurnOptions);
             handView.SetInteractable(true);
 
@@ -397,9 +408,7 @@ namespace Mahjong.View
             pendingHumanAction = null;
             humanTurnOptions = null;
 
-            SetStatus(UiFont.SupportsChinese
-                ? "要不要叫牌？滑到按鈕上會標出用掉哪幾張"
-                : "Claim the discard?");
+            SetStatus(UiFont.SupportsChinese ? "要不要叫牌？滑按鈕看用掉哪幾張" : "Claim it?");
             actionButtons.Show(options);
 
             while (pendingHumanAction == null) yield return null;
@@ -479,6 +488,10 @@ namespace Mahjong.View
             RefreshAll();
 
             SetStatus(UiFont.SupportsChinese ? "全部攤牌" : "Hands revealed");
+
+            if (result != null && result.EndReason == GameEndReason.Win)
+                winningHand.Show(state.Players[result.WinnerSeat], result.WinningTile);
+
             yield return new WaitForSeconds(RevealPause);
             SetStatus("");
 

@@ -45,8 +45,9 @@ namespace Mahjong.View
             UIFactory.Stretch(overlay.rectTransform);
 
             var panel = UIFactory.CreateImage("Panel", overlay.transform, PanelColor);
+            // 往下讓一點，上方留給中央攤出來的贏家牌型
             UIFactory.Anchor(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             Vector2.zero, new Vector2(640f, 470f));
+                             new Vector2(0f, -60f), new Vector2(640f, 440f));
 
             title = UIFactory.CreateText("Title", panel.transform, "", 42, TitleColor);
             UIFactory.Anchor(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),

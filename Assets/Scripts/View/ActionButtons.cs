@@ -36,10 +36,10 @@ namespace Mahjong.View
 
         public static ActionButtons Create(Transform parent)
         {
-            // 擺在手牌頂端（-338）與牌山下排（-266）之間僅有的那條空隙
+            // 釘在畫面底部、自己手牌的正上方。左邊是狀態提示、右邊是名牌，三者不重疊。
             var rect = UIFactory.CreateRect("ActionButtons", parent);
-            UIFactory.Anchor(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, -302f), new Vector2(1200f, ButtonSize.y));
+            UIFactory.Anchor(rect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                             new Vector2(0f, 206f), new Vector2(1000f, ButtonSize.y));
 
             var view = rect.gameObject.AddComponent<ActionButtons>();
             view.Hide();

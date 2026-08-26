@@ -8,37 +8,41 @@ namespace Mahjong.View
     // ============================================================
     // 牌桌
     //
-    // 版面以畫面中心 (0,0) 為基準，1920x1080 下各區塊互不重疊：
+    // 版面分兩種定位方式：
+    //   牌山與牌河 —— 釘在畫面正中心，因為它們是牌桌的中央
+    //   三家對手   —— 釘在畫面對應的那一邊
     //
-    //   上家名牌  y +508      上家手牌  y +466      上家副露  y +400
-    //   牌山上排  y +234..+266
-    //   上家牌河  y  +90..+220
-    //   左右名牌  y +300      左右手牌  x ±650（直立）  左右副露  x ±(712..900)
-    //   左家牌河  x -275..-105    中央資訊  x ±85    右家牌河  x +105..+275
-    //   自己牌河  y -220..-90
-    //   牌山下排  y -266..-234
-    //   動作按鈕  y -332..-272（Bootstrap 擺）
-    //   自己手牌  y -536..-338（HandView 擺）
+    // 對手釘邊而不是釘中心，是因為畫布縮放採「鎖定高度」，
+    // 畫面越寬左右兩邊離中心就越遠，釘邊才會一直貼著自己那一側。
+    //
+    // 中央區塊座標（1080 高固定）：
+    //   牌山上排 y +234..+266    上家牌河 y  +90..+220
+    //   左家牌河 x -275..-105    中央資訊 x ±85    右家牌河 x +105..+275
+    //   自己牌河 y -220..-90     牌山下排 y -266..-234
     //
     // 座位換算：玩家永遠在下方，其餘依逆時針排到右、上、左。
-    // 左右兩家的手牌是直立的，跟實際坐在牌桌側面看到的一樣。
+    // 左右兩家的手牌與副露都是橫躺的，跟坐在牌桌側面看到的一樣；
+    // 副露排在手牌與桌心之間，也就是那一家的正前方。
     // ============================================================
 
     public class TableView : MonoBehaviour
     {
         static readonly Vector2 DiscardTileSize = new Vector2(34f, 46f);
-        static readonly Vector2 OpponentTileSize = new Vector2(30f, 41f);
-        static readonly Vector2 OpponentMeldSize = new Vector2(46f, 63f);
+        static readonly Vector2 TopTileSize = new Vector2(30f, 41f);
+        static readonly Vector2 TopMeldSize = new Vector2(46f, 63f);
+
+        // 左右兩家的牌是橫躺的，往下排時佔用的高度是「牌寬」，
+        // 所以間距必須大於牌寬才不會疊在一起。
+        static readonly Vector2 SideTileSize = new Vector2(22f, 30f);
+        const float SideTileStep = 25f;      // > SideTileSize.x，兩牌之間留 3px
+        const float SideMeldGroupGap = 12f;
+        const float TopTileStep = 32f;       // > TopTileSize.x
 
         static readonly Vector2 WideDiscardArea = new Vector2(310f, 132f);
         static readonly Vector2 SideDiscardArea = new Vector2(170f, 132f);
         const int WideDiscardsPerRow = 8;
         const int SideDiscardsPerRow = 4;
         const float DiscardGap = 2f;
-
-        /// <summary>直立手牌彼此重疊一些，16 張才塞得進畫面高度</summary>
-        const float VerticalHandStep = 22f;
-        const float HorizontalHandStep = 32f;
         const int RevealColumnsForSideSeats = 2;
 
         /// <summary>四家牌河的中心位置，順序為自己、右、上、左</summary>
@@ -63,6 +67,12 @@ namespace Mahjong.View
         static readonly Color TextColor = new Color(0.90f, 0.92f, 0.88f);
         static readonly Color ActiveColor = new Color(1f, 0.85f, 0.35f);
         static readonly Color WinnerColor = new Color(1f, 0.55f, 0.40f);
+
+        static readonly Vector2 Centre = new Vector2(0.5f, 0.5f);
+        static readonly Vector2 LeftEdge = new Vector2(0f, 0.5f);
+        static readonly Vector2 RightEdge = new Vector2(1f, 0.5f);
+        static readonly Vector2 TopEdge = new Vector2(0.5f, 1f);
+        static readonly Vector2 BottomRight = new Vector2(1f, 0f);
 
         enum SeatOrientation { Bottom, Right, Top, Left }
 
@@ -100,10 +110,7 @@ namespace Mahjong.View
             return view;
         }
 
-        /// <summary>下一張正常摸牌的位置，供摸牌動畫使用</summary>
         public Vector2 NextDrawPosition => wallView.HeadPosition;
-
-        /// <summary>下一張補牌的位置（牌尾），供槓後補牌動畫使用</summary>
         public Vector2 NextReplacementPosition => wallView.TailPosition;
 
         /// <summary>某個座位在畫面上的方位，0 是自己（下方）</summary>
@@ -115,10 +122,8 @@ namespace Mahjong.View
             wallView = WallView.Create(transform);   // 先建，讓牌山墊在牌河底下
 
             slots = new SeatSlot[GameState.PlayerCount];
-            slots[0] = BuildSlot(0, SeatOrientation.Bottom);
-            slots[1] = BuildSlot(1, SeatOrientation.Right);
-            slots[2] = BuildSlot(2, SeatOrientation.Top);
-            slots[3] = BuildSlot(3, SeatOrientation.Left);
+            for (int index = 0; index < GameState.PlayerCount; index++)
+                slots[index] = BuildSlot(index, (SeatOrientation)index);
 
             BuildCentre();
         }
@@ -133,56 +138,59 @@ namespace Mahjong.View
             PlaceSlotRegions(slot, orientation);
 
             slot.DiscardArea = UIFactory.CreateRect("Discards" + orientation, transform);
-            var areaSize = IsVertical(orientation) ? SideDiscardArea : WideDiscardArea;
+            var areaSize = IsSide(orientation) ? SideDiscardArea : WideDiscardArea;
             UIFactory.Anchor(slot.DiscardArea, Centre, Centre, DiscardCentres[index], areaSize);
             return slot;
         }
 
-        static readonly Vector2 Centre = new Vector2(0.5f, 0.5f);
-
-        /// <summary>每個區塊都用畫面中心座標直接定位，不再靠面板相對排版，避免互相擠壓。</summary>
+        /// <summary>
+        /// 三家對手各自釘在畫面的那一邊，這樣畫面變寬變窄都會跟著貼邊，
+        /// 不會像釘中心那樣在寬螢幕上被推出可視範圍。
+        /// </summary>
         static void PlaceSlotRegions(SeatSlot slot, SeatOrientation orientation)
         {
             switch (orientation)
             {
                 case SeatOrientation.Bottom:
-                    UIFactory.Anchor(slot.Header.rectTransform, Centre, Centre,
-                                     new Vector2(-700f, -300f), new Vector2(420f, 34f));
-                    slot.Header.alignment = TextAnchor.MiddleLeft;
+                    // 名牌移到右下角，跟左下角的花牌區分開，兩邊都不會互相遮住
+                    UIFactory.Anchor(slot.Header.rectTransform, BottomRight, BottomRight,
+                                     new Vector2(-24f, 212f), new Vector2(320f, 34f));
+                    slot.Header.alignment = TextAnchor.MiddleRight;
                     UIFactory.Anchor(slot.HandRow, Centre, Centre, Vector2.zero, Vector2.zero);
                     UIFactory.Anchor(slot.MeldRow, Centre, Centre, Vector2.zero, Vector2.zero);
                     break;
 
                 case SeatOrientation.Top:
-                    UIFactory.Anchor(slot.Header.rectTransform, Centre, Centre,
-                                     new Vector2(0f, 508f), new Vector2(900f, 34f));
-                    UIFactory.Anchor(slot.HandRow, Centre, Centre,
-                                     new Vector2(0f, 466f), new Vector2(1100f, 44f));
-                    UIFactory.Anchor(slot.MeldRow, Centre, Centre,
-                                     new Vector2(0f, 400f), new Vector2(1100f, 66f));
+                    UIFactory.Anchor(slot.Header.rectTransform, TopEdge, TopEdge,
+                                     new Vector2(0f, -22f), new Vector2(900f, 34f));
+                    UIFactory.Anchor(slot.HandRow, TopEdge, TopEdge,
+                                     new Vector2(0f, -62f), new Vector2(1100f, 44f));
+                    UIFactory.Anchor(slot.MeldRow, TopEdge, TopEdge,
+                                     new Vector2(0f, -114f), new Vector2(1100f, 70f));
                     break;
 
                 case SeatOrientation.Right:
-                    UIFactory.Anchor(slot.Header.rectTransform, Centre, Centre,
-                                     new Vector2(700f, 300f), new Vector2(420f, 34f));
-                    UIFactory.Anchor(slot.HandRow, Centre, Centre,
-                                     new Vector2(650f, 30f), new Vector2(60f, 400f));
-                    UIFactory.Anchor(slot.MeldRow, Centre, Centre,
-                                     new Vector2(806f, 30f), new Vector2(188f, 400f));
+                    UIFactory.Anchor(slot.Header.rectTransform, RightEdge, RightEdge,
+                                     new Vector2(-180f, 250f), new Vector2(320f, 34f));
+                    UIFactory.Anchor(slot.HandRow, RightEdge, RightEdge,
+                                     new Vector2(-64f, 10f), new Vector2(60f, 460f));
+                    // 副露排在手牌與桌心之間，也就是這一家的正前方
+                    UIFactory.Anchor(slot.MeldRow, RightEdge, RightEdge,
+                                     new Vector2(-142f, 10f), new Vector2(60f, 460f));
                     break;
 
                 case SeatOrientation.Left:
-                    UIFactory.Anchor(slot.Header.rectTransform, Centre, Centre,
-                                     new Vector2(-700f, 300f), new Vector2(420f, 34f));
-                    UIFactory.Anchor(slot.HandRow, Centre, Centre,
-                                     new Vector2(-650f, 30f), new Vector2(60f, 400f));
-                    UIFactory.Anchor(slot.MeldRow, Centre, Centre,
-                                     new Vector2(-806f, 30f), new Vector2(188f, 400f));
+                    UIFactory.Anchor(slot.Header.rectTransform, LeftEdge, LeftEdge,
+                                     new Vector2(180f, 250f), new Vector2(320f, 34f));
+                    UIFactory.Anchor(slot.HandRow, LeftEdge, LeftEdge,
+                                     new Vector2(64f, 10f), new Vector2(60f, 460f));
+                    UIFactory.Anchor(slot.MeldRow, LeftEdge, LeftEdge,
+                                     new Vector2(142f, 10f), new Vector2(60f, 460f));
                     break;
             }
         }
 
-        static bool IsVertical(SeatOrientation orientation)
+        static bool IsSide(SeatOrientation orientation)
             => orientation == SeatOrientation.Left || orientation == SeatOrientation.Right;
 
         void BuildCentre()
@@ -251,65 +259,74 @@ namespace Mahjong.View
                 return;
             }
 
-            bool vertical = IsVertical(slot.Orientation);
+            bool side = IsSide(slot.Orientation);
+            var size = side ? SideTileSize : TopTileSize;
+            float step = side ? SideTileStep : TopTileStep;
+
             int tileCount = player.ConcealedTileCount;
-            float step = vertical ? VerticalHandStep : HorizontalHandStep;
             float start = -(tileCount - 1) * step * 0.5f;
 
             for (int i = 0; i < tileCount; i++)
             {
-                var tileView = CreateTransientTile(slot.HandRow, TileView.NoTile, OpponentTileSize, false);
-                Vector2 position = vertical
+                var tileView = CreateTransientTile(slot.HandRow, TileView.NoTile, size, false);
+                Vector2 position = side
                     ? new Vector2(0f, -(start + i * step))
                     : new Vector2(start + i * step, 0f);
-                UIFactory.Anchor(tileView.Rect, Centre, Centre, position, OpponentTileSize);
-                if (vertical) tileView.Rect.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                UIFactory.Anchor(tileView.Rect, Centre, Centre, position, size);
+                if (side) tileView.Rect.localRotation = Quaternion.Euler(0f, 0f, 90f);
             }
         }
 
         /// <summary>
-        /// 結算時翻開的手牌一律正立，看得清楚牌面比較重要。
+        /// 結算時翻開的手牌一律正立，看得清楚牌面比擺法真實重要。
         /// 左右兩家排不下一整排，改成兩欄。
         /// </summary>
         void LayoutRevealedHand(SeatSlot slot, PlayerState player)
         {
-            var tiles = new List<int>();
-            for (int tile = 0; tile < TileDef.KINDS; tile++)
-                for (int count = 0; count < player.ConcealedCounts[tile]; count++)
-                    tiles.Add(tile);
+            var tiles = CollectTiles(player.ConcealedCounts);
+            bool side = IsSide(slot.Orientation);
+            var size = side ? SideTileSize : TopTileSize;
 
-            bool vertical = IsVertical(slot.Orientation);
-            int columns = vertical ? RevealColumnsForSideSeats : tiles.Count;
-            if (columns <= 0) columns = 1;
-
-            float stepX = OpponentTileSize.x + 2f;
-            float stepY = OpponentTileSize.y + 2f;
+            int columns = side ? RevealColumnsForSideSeats : Mathf.Max(1, tiles.Count);
             int rows = Mathf.CeilToInt(tiles.Count / (float)columns);
+            float stepX = size.x + 2f;
+            float stepY = size.y + 2f;
 
             for (int i = 0; i < tiles.Count; i++)
             {
-                int column = i % columns;
-                int row = i / columns;
-
-                var tileView = CreateTransientTile(slot.HandRow, tiles[i], OpponentTileSize, true);
+                var tileView = CreateTransientTile(slot.HandRow, tiles[i], size, true);
                 UIFactory.Anchor(tileView.Rect, Centre, Centre,
-                                 new Vector2((column - (columns - 1) * 0.5f) * stepX,
-                                             -(row - (rows - 1) * 0.5f) * stepY),
-                                 OpponentTileSize);
+                                 new Vector2((i % columns - (columns - 1) * 0.5f) * stepX,
+                                             -(i / columns - (rows - 1) * 0.5f) * stepY),
+                                 size);
             }
+        }
+
+        static List<int> CollectTiles(int[] counts)
+        {
+            var tiles = new List<int>();
+            for (int tile = 0; tile < TileDef.KINDS; tile++)
+                for (int count = 0; count < counts[tile]; count++)
+                    tiles.Add(tile);
+            return tiles;
         }
 
         // ---------- 副露 ----------
 
         /// <summary>
-        /// 副露一律保持正立，只是左右兩家改成一組一列往下排。
-        /// 立起來雖然更接近真實牌桌，但牌面文字會變成側躺看不清楚。
+        /// 左右兩家的副露跟他們的手牌同方向（橫躺），並排在手牌與桌心之間，
+        /// 也就是那一家的正前方，跟真的把牌推出去攤在面前一樣。
         /// </summary>
         void LayoutMelds(SeatSlot slot, List<Meld> melds)
         {
-            bool vertical = IsVertical(slot.Orientation);
-            float rowCursor = 0f;
-            float columnCursor = 0f;
+            bool side = IsSide(slot.Orientation);
+            var size = side ? SideTileSize : TopMeldSize;
+            float step = side ? SideTileStep : size.x + 1f;
+            float groupGap = side ? SideMeldGroupGap : 12f;
+
+            float cursor = 0f;
+            float total = MeasureMeldExtent(melds, step, groupGap);
+            float start = -total * 0.5f;
 
             foreach (var meld in melds)
             {
@@ -317,28 +334,31 @@ namespace Mahjong.View
                 for (int i = 0; i < layout.Tiles.Length; i++)
                 {
                     bool faceDown = MeldDisplay.IsFaceDown(meld, i, layout.Tiles.Length);
-                    var tileView = CreateTransientTile(slot.MeldRow, layout.Tiles[i],
-                                                       OpponentMeldSize, !faceDown);
+                    var tileView = CreateTransientTile(slot.MeldRow, layout.Tiles[i], size, !faceDown);
 
-                    float offsetX = vertical ? i * (OpponentMeldSize.x + 1f) : columnCursor;
-                    float offsetY = vertical ? -rowCursor : 0f;
-                    var anchor = vertical ? new Vector2(0f, 1f) : new Vector2(0f, 0.5f);
-                    UIFactory.Anchor(tileView.Rect, anchor, anchor,
-                                     new Vector2(offsetX, offsetY), OpponentMeldSize);
+                    float along = start + cursor;
+                    Vector2 position = side ? new Vector2(0f, -along) : new Vector2(along, 0f);
+                    UIFactory.Anchor(tileView.Rect, Centre, Centre, position, size);
+                    if (side) tileView.Rect.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
-                    if (!vertical) columnCursor += OpponentMeldSize.x + 1f;
+                    cursor += step;
                 }
-
-                if (vertical) rowCursor += OpponentMeldSize.y + 4f;
-                else columnCursor += 12f;
+                cursor += groupGap;
             }
+        }
+
+        static float MeasureMeldExtent(List<Meld> melds, float step, float groupGap)
+        {
+            float total = 0f;
+            foreach (var meld in melds) total += meld.Tiles().Length * step + groupGap;
+            return Mathf.Max(0f, total - groupGap);
         }
 
         // ---------- 牌河 ----------
 
         void LayoutDiscardTiles(SeatSlot slot, List<int> discards)
         {
-            int perRow = IsVertical(slot.Orientation) ? SideDiscardsPerRow : WideDiscardsPerRow;
+            int perRow = IsSide(slot.Orientation) ? SideDiscardsPerRow : WideDiscardsPerRow;
             float stepX = DiscardTileSize.x + DiscardGap;
             float stepY = DiscardTileSize.y + DiscardGap;
             float rowOffset = (perRow - 1) * 0.5f;
@@ -346,7 +366,7 @@ namespace Mahjong.View
             for (int i = 0; i < discards.Count; i++)
             {
                 var tileView = CreateTransientTile(slot.DiscardArea, discards[i], DiscardTileSize, true);
-                UIFactory.Anchor(tileView.Rect, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                UIFactory.Anchor(tileView.Rect, TopEdge, TopEdge,
                                  new Vector2((i % perRow - rowOffset) * stepX, -(i / perRow) * stepY),
                                  DiscardTileSize);
             }

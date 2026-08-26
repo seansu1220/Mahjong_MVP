@@ -25,6 +25,7 @@ namespace Mahjong.View
         const float ShuffleDuration = 0.85f;
         const float DealStepDuration = 0.085f;
         const float ShuffleRadius = 46f;
+        const float FadeStartProgress = 0.75f;   // 飛到七成五才開始淡出
 
         readonly List<TileView> tiles = new List<TileView>();
         System.Random rng;
@@ -173,8 +174,11 @@ namespace Mahjong.View
                 if (tile == null) return;
                 float eased = EaseOut(progress);
                 tile.Rect.anchoredPosition = Vector2.Lerp(from, to, eased);
-                tile.Rect.localScale = Vector3.one * Mathf.Lerp(1.15f, 0.75f, eased);
-                tile.SetAlpha(1f - eased * eased);
+                tile.Rect.localScale = Vector3.one * Mathf.Lerp(1.25f, 1f, eased);
+
+                // 一路保持不透明，只在最後一小段收掉，中途才看得清楚
+                float fade = Mathf.InverseLerp(FadeStartProgress, 1f, progress);
+                tile.SetAlpha(1f - fade);
             });
 
             if (tile == null) yield break;

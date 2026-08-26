@@ -88,6 +88,9 @@ namespace Mahjong
         public int WinnerSeat = -1;
         public ScoreResult Score;
 
+        /// <summary>胡的是哪一張。結算畫面要把它跟其餘手牌分開擺。</summary>
+        public int WinningTile = GameState.NoTile;
+
         public static TurnResult Fail(string reason) => new TurnResult { Success = false, Error = reason };
     }
 
@@ -476,6 +479,7 @@ namespace Mahjong
                 Applied = action,
                 EndReason = GameEndReason.Win,
                 WinnerSeat = seat,
+                WinningTile = context.WinningTile,
                 Score = ScoreCalculator.Calculate(context, FanTable)
             };
         }
