@@ -19,6 +19,11 @@ namespace Mahjong.View
         public static readonly Color WinColor = new Color(1f, 0.45f, 0.35f);
         public static readonly Color NeutralColor = new Color(0.92f, 0.94f, 0.90f);
 
+        // 128px 的字實際行高會超過文字框，原本會壓到下方那行小字，
+        // 所以字級縮到 104、面板加高，並把兩行拉開。
+        const int HeadlineFontSize = 104;
+        const int DetailFontSize = 30;
+
         const float PopInDuration = 0.14f;
         const float HoldDuration = 0.46f;
         const float FadeOutDuration = 0.24f;
@@ -45,18 +50,18 @@ namespace Mahjong.View
         {
             panel = UIFactory.CreateRect("Panel", transform);
             UIFactory.Anchor(panel, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, 0f), new Vector2(560f, 200f));
+                             new Vector2(0f, 0f), new Vector2(620f, 268f));
 
             backdrop = UIFactory.CreateImage("Backdrop", panel, new Color(0f, 0f, 0f, 0.55f));
             UIFactory.Stretch(backdrop.rectTransform);
 
-            label = UIFactory.CreateText("Text", panel, "", 128, ClaimColor);
-            UIFactory.Anchor(label.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, 14f), new Vector2(540f, 150f));
+            label = UIFactory.CreateText("Text", panel, "", HeadlineFontSize, ClaimColor);
+            UIFactory.Anchor(label.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                             new Vector2(0f, -22f), new Vector2(600f, 140f));
 
-            subLabel = UIFactory.CreateText("SubText", panel, "", 32, NeutralColor);
+            subLabel = UIFactory.CreateText("SubText", panel, "", DetailFontSize, NeutralColor);
             UIFactory.Anchor(subLabel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 22f), new Vector2(540f, 42f));
+                             new Vector2(0f, 26f), new Vector2(600f, 44f));
         }
 
         // ------------------------------------------------------------

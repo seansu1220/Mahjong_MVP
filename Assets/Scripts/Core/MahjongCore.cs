@@ -89,6 +89,12 @@ namespace Mahjong
         public int BaseTile;      // Chi 為順子最小張；其餘為該牌 id
         public int FromPlayer;    // 來源玩家 index；暗槓為自己
 
+        /// <summary>
+        /// 從別人手上叫過來的那一張。暗槓與自己加槓沒有這張牌，為 -1。
+        /// 畫面要把它擺在明顯的位置，讓人看得出這組是吃誰的、碰誰的。
+        /// </summary>
+        public int ClaimedTile = -1;
+
         public bool IsConcealed => Type == MeldType.AnKan;
 
         /// <summary>展開成實際牌張</summary>
@@ -110,7 +116,13 @@ namespace Mahjong
 
         /// <summary>深拷貝。GameState.Clone 用，避免 AI 模擬改動到真實局面。</summary>
         public Meld Clone()
-            => new Meld { Type = Type, BaseTile = BaseTile, FromPlayer = FromPlayer };
+            => new Meld
+            {
+                Type = Type,
+                BaseTile = BaseTile,
+                FromPlayer = FromPlayer,
+                ClaimedTile = ClaimedTile
+            };
 
         public override string ToString()
         {
@@ -385,6 +397,15 @@ namespace Mahjong
 
         public int Remaining => tailIndex - drawIndex + 1;
         public bool IsEmpty => Remaining <= 0;
+
+        /// <summary>已經從牌頭摸走幾張（正常摸牌）</summary>
+        public int DrawnFromHead => drawIndex;
+
+        /// <summary>已經從牌尾補走幾張（補花與槓後補牌）</summary>
+        public int DrawnFromTail => tiles.Count - 1 - tailIndex;
+
+        /// <summary>整副牌山原本有幾張</summary>
+        public int TotalTiles => tiles.Count;
 
         /// <summary>從牌頭正常摸牌</summary>
         public int Draw()

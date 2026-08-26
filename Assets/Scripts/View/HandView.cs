@@ -131,19 +131,23 @@ namespace Mahjong.View
             }
         }
 
+        /// <summary>
+        /// 副露由右往左排。組內順序交給 MeldDisplay 決定——
+        /// 被吃碰走的那張會擺在整組正中間，看得出這組是從誰手上叫來的。
+        /// </summary>
         void LayoutMelds(List<Meld> melds)
         {
             float cursor = 0f;
             for (int i = melds.Count - 1; i >= 0; i--)
             {
                 var meld = melds[i];
-                int[] tiles = meld.Tiles();
-                for (int t = tiles.Length - 1; t >= 0; t--)
+                var layout = MeldDisplay.Arrange(meld);
+
+                for (int t = layout.Tiles.Length - 1; t >= 0; t--)
                 {
                     cursor -= MeldTileSize.x + 2f;
-                    // 暗槓蓋著頭尾兩張，讓人看得出是暗的
-                    bool faceUp = !(meld.Type == MeldType.AnKan && (t == 0 || t == tiles.Length - 1));
-                    var tileView = TileView.Create(meldRow, tiles[t], MeldTileSize, faceUp);
+                    bool faceDown = MeldDisplay.IsFaceDown(meld, t, layout.Tiles.Length);
+                    var tileView = TileView.Create(meldRow, layout.Tiles[t], MeldTileSize, !faceDown);
                     UIFactory.Anchor(tileView.Rect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
                                      new Vector2(cursor, 0f), MeldTileSize);
                     tileView.SetInteractable(false);

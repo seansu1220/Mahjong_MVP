@@ -64,6 +64,8 @@ namespace Mahjong.Tests
             t.TestAiSkipsWorthlessClaim();
             t.TestAiTakesUsefulClaim();
             t.TestFullGameWithAi();
+            t.TestClaimedTileIsRecorded();
+            t.TestWallTracksHeadAndTailDraws();
             t.Report();
             return t.failed == 0;
         }
@@ -951,6 +953,57 @@ namespace Mahjong.Tests
 
             Assert(ok, "12 局 AI 對戰完整跑完，全程牌數守恆");
             Assert(wins >= 8, $"AI 大多數牌局能打到有人胡牌（12 局中胡了 {wins} 局）");
+        }
+
+        void TestClaimedTileIsRecorded()
+        {
+            // 吃：手上 4萬5萬，吃下家打的 3萬 -> 副露要記得被吃的是 3萬
+            var state = BlankBoard();
+            GiveTiles(state.Players[1], 3, 4);
+            SetPendingDiscard(state, discarder: 0, tile: 2);
+
+            var engine = new TurnEngine(state, FanTable.Default());
+            var chi = engine.GetClaimActions(1).Find(a => a.Type == ActionType.Chi);
+            Assert(chi != null, "前提：這張確實吃得到");
+
+            engine.ResolveClaims(new List<GameAction> { chi });
+            Assert(state.Players[1].Melds[0].ClaimedTile == 2, "吃要記下被吃走的那一張");
+
+            // 碰：被碰的那張也要記
+            var ponState = BlankBoard();
+            GiveTiles(ponState.Players[1], 27, 27);
+            SetPendingDiscard(ponState, discarder: 0, tile: 27);
+            var ponEngine = new TurnEngine(ponState, FanTable.Default());
+            ponEngine.ResolveClaims(new List<GameAction>
+            {
+                new GameAction { Type = ActionType.Pon, SeatIndex = 1, Tile = 27 }
+            });
+            Assert(ponState.Players[1].Melds[0].ClaimedTile == 27, "碰要記下被碰走的那一張");
+
+            // 暗槓沒有從別人手上拿牌，維持 -1
+            var kanState = BlankBoard();
+            GiveTiles(kanState.Players[0], 5, 5, 5, 5, 9);
+            kanState.Phase = GamePhase.WaitingDiscard;
+            kanState.CurrentPlayer = 0;
+            kanState.HasDrawnThisTurn = true;
+            var kanEngine = new TurnEngine(kanState, FanTable.Default());
+            kanEngine.ApplyTurnAction(new GameAction { Type = ActionType.AnKan, SeatIndex = 0, Tile = 5 });
+            Assert(kanState.Players[0].Melds[0].ClaimedTile == -1, "暗槓沒有被叫走的牌，維持 -1");
+        }
+
+        void TestWallTracksHeadAndTailDraws()
+        {
+            // 畫面要畫出「從哪一端摸牌」，所以牌山得分別記錄頭尾各摸走幾張
+            var wall = new Wall(seed: 321);
+            Assert(wall.TotalTiles == 144 && wall.DrawnFromHead == 0 && wall.DrawnFromTail == 0,
+                   "牌山起始為 144 張，頭尾都還沒摸");
+
+            wall.Draw(); wall.Draw(); wall.Draw();
+            wall.DrawFromTail();
+
+            Assert(wall.DrawnFromHead == 3, "從牌頭摸走的張數要正確");
+            Assert(wall.DrawnFromTail == 1, "從牌尾補走的張數要正確");
+            Assert(wall.Remaining == 140, "剩餘張數 = 總數 - 頭尾摸走的");
         }
 
         static bool RunGameWithAi(TurnEngine engine, AIPlayer[] players, out string failure)

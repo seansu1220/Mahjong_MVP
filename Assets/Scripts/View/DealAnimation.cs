@@ -158,6 +158,30 @@ namespace Mahjong.View
 
         // ------------------------------------------------------------
 
+        /// <summary>
+        /// 從指定位置飛一張牌到座位上，用來讓玩家看清楚這張是從牌山哪一端摸的。
+        /// 純視覺，牌局狀態早就更新完了。
+        /// </summary>
+        public IEnumerator FlyTile(Vector2 from, Vector2 to, float duration)
+        {
+            var tile = TileView.Create(transform, TileView.NoTile, TileSize, faceUp: false);
+            tile.SetInteractable(false);
+            UIFactory.Anchor(tile.Rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), from, TileSize);
+
+            yield return Tween(duration, progress =>
+            {
+                if (tile == null) return;
+                float eased = EaseOut(progress);
+                tile.Rect.anchoredPosition = Vector2.Lerp(from, to, eased);
+                tile.Rect.localScale = Vector3.one * Mathf.Lerp(1.15f, 0.75f, eased);
+                tile.SetAlpha(1f - eased * eased);
+            });
+
+            if (tile == null) yield break;
+            tile.gameObject.SetActive(false);
+            Destroy(tile.gameObject);
+        }
+
         static IEnumerator Tween(float duration, System.Action<float> step)
         {
             float elapsed = 0f;

@@ -14,7 +14,8 @@ namespace Mahjong.View
 
     public class ResultView : MonoBehaviour
     {
-        static readonly Color OverlayColor = new Color(0f, 0f, 0f, 0.72f);
+        // 結算時三家的手牌會翻開，遮罩太黑就看不到了
+        static readonly Color OverlayColor = new Color(0f, 0f, 0f, 0.45f);
         static readonly Color PanelColor = new Color(0.12f, 0.16f, 0.14f, 0.98f);
         static readonly Color TitleColor = new Color(1f, 0.86f, 0.38f);
         static readonly Color BodyColor = new Color(0.92f, 0.93f, 0.90f);
@@ -45,15 +46,15 @@ namespace Mahjong.View
 
             var panel = UIFactory.CreateImage("Panel", overlay.transform, PanelColor);
             UIFactory.Anchor(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             Vector2.zero, new Vector2(760f, 520f));
+                             Vector2.zero, new Vector2(640f, 470f));
 
-            title = UIFactory.CreateText("Title", panel.transform, "", 46, TitleColor);
+            title = UIFactory.CreateText("Title", panel.transform, "", 42, TitleColor);
             UIFactory.Anchor(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                             new Vector2(0f, -40f), new Vector2(700f, 60f));
+                             new Vector2(0f, -36f), new Vector2(600f, 54f));
 
-            body = UIFactory.CreateText("Body", panel.transform, "", 28, BodyColor, TextAnchor.UpperCenter);
+            body = UIFactory.CreateText("Body", panel.transform, "", 26, BodyColor, TextAnchor.UpperCenter);
             UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                             new Vector2(0f, -120f), new Vector2(700f, 290f));
+                             new Vector2(0f, -104f), new Vector2(600f, 270f));
 
             nextButton = UIFactory.CreateButton("NextHand", panel.transform,
                                                 UiFont.SupportsChinese ? "再來一局" : "Next Hand",

@@ -28,7 +28,8 @@ namespace Mahjong.View
         static readonly Color StatusColor = new Color(0.86f, 0.90f, 0.84f);
 
         const float AiThinkDelay = 0.30f;
-        const float DrawDelay = 0.14f;
+        const float DrawFlightDuration = 0.22f;
+        const float RevealPause = 1.1f;      // 攤牌後先讓玩家看一眼再蓋上結算視窗
 
         GameState state;
         TurnEngine engine;
@@ -45,7 +46,6 @@ namespace Mahjong.View
 
         GameAction pendingHumanAction;
         List<GameAction> humanTurnOptions;
-        int[] defaultClaimHighlight;
         int lastDrawnTile = TileView.NoTile;
         int dealerIndex;
         int dealerStreak;
@@ -157,6 +157,8 @@ namespace Mahjong.View
             lastDrawnTile = TileView.NoTile;
             pendingHumanAction = null;
             humanTurnOptions = null;
+            tableView.RevealHands = false;
+            tableView.WinnerSeat = -1;
             resultView.Hide();
 
             yield return PlayDealAnimation();
@@ -207,11 +209,16 @@ namespace Mahjong.View
             {
                 if (state.Phase == GamePhase.WaitingDraw)
                 {
+                    // 位置要在摸之前先記下來，摸完那一墩就從牌山上消失了
+                    var wallPosition = tableView.NextDrawPosition;
+                    int drawingSeat = state.CurrentPlayer;
+
                     var result = engine.DrawForCurrentPlayer();
                     lastDrawnTile = result.DrawnTile;
                     if (result.EndReason != GameEndReason.None) finalResult = result;
                     RefreshAll();
-                    yield return new WaitForSeconds(DrawDelay);
+
+                    yield return AnimateTileToSeat(wallPosition, drawingSeat);
                 }
                 else if (state.Phase == GamePhase.WaitingDiscard)
                 {
@@ -251,6 +258,10 @@ namespace Mahjong.View
 
             if (chosen == null) yield break;
 
+            // 槓完要從牌尾補牌，先記下牌尾位置才能演出「從另一端補牌」
+            bool isKan = chosen.Type == ActionType.AnKan || chosen.Type == ActionType.AddKan;
+            var replacementPosition = tableView.NextReplacementPosition;
+
             var result = engine.ApplyTurnAction(chosen);
             if (!result.Success)
             {
@@ -265,6 +276,16 @@ namespace Mahjong.View
             SetStatus("");
             RefreshAll();
             yield return AnnounceIfNeeded(chosen);
+
+            if (isKan && result.DrawnTile != GameState.NoTile)
+                yield return AnimateTileToSeat(replacementPosition, seat);
+        }
+
+        /// <summary>演出「牌從牌山某一端飛到某家手上」，讓玩家看得出是正常摸還是補牌。</summary>
+        IEnumerator AnimateTileToSeat(Vector2 from, int seat)
+        {
+            var target = TableView.SeatAnchors[tableView.DisplayIndexOf(seat)];
+            yield return dealAnimation.FlyTile(from, target, DrawFlightDuration);
         }
 
         IEnumerator RunClaimPhase(System.Action<TurnResult> reportEnd)
@@ -376,17 +397,14 @@ namespace Mahjong.View
             pendingHumanAction = null;
             humanTurnOptions = null;
 
-            SetStatus(UiFont.SupportsChinese ? "要不要叫牌？" : "Claim the discard?");
-
-            // 先把所有可叫動作會用到的牌標起來，滑到個別按鈕上再縮小到那一組
-            defaultClaimHighlight = BuildDefaultHighlight(options);
-            handView.SetClaimHighlight(defaultClaimHighlight);
+            SetStatus(UiFont.SupportsChinese
+                ? "要不要叫牌？滑到按鈕上會標出用掉哪幾張"
+                : "Claim the discard?");
             actionButtons.Show(options);
 
             while (pendingHumanAction == null) yield return null;
 
             actionButtons.Hide();
-            defaultClaimHighlight = null;
             handView.ClearClaimHighlight();
             SetStatus("");
         }
@@ -408,33 +426,13 @@ namespace Mahjong.View
         // 叫牌提示：標出手上會被拿去湊的牌
         // ------------------------------------------------------------
 
-        /// <summary>滑鼠移到某個叫牌按鈕上時，只標那個動作要用到的牌；移開則回到全部候選。</summary>
+        /// <summary>
+        /// 只有滑鼠移到某個叫牌按鈕上時才標出那一組會用掉的牌，移開就清掉。
+        /// 吃可能有好幾種組法（例如手上 1245 條要吃 3 條，可組 123／234／345），
+        /// 一次全標會把四張都標亮反而看不出差別，所以一次只標一組。
+        /// </summary>
         void OnHumanActionHovered(GameAction action)
-        {
-            if (action != null)
-            {
-                handView.SetClaimHighlight(TilesUsedBy(action));
-                return;
-            }
-            handView.SetClaimHighlight(defaultClaimHighlight);
-        }
-
-        /// <summary>把所有可叫的動作會用到的牌合起來，取每張需要最多的那個數量。</summary>
-        static int[] BuildDefaultHighlight(List<GameAction> options)
-        {
-            var merged = new int[TileDef.KINDS];
-            bool any = false;
-
-            foreach (var option in options)
-            {
-                var used = TilesUsedBy(option);
-                if (used == null) continue;
-                any = true;
-                for (int tile = 0; tile < TileDef.KINDS; tile++)
-                    if (used[tile] > merged[tile]) merged[tile] = used[tile];
-            }
-            return any ? merged : null;
-        }
+            => handView.SetClaimHighlight(TilesUsedBy(action));
 
         /// <summary>某個叫牌動作會從手上拿走哪幾張。胡牌用到整副手牌，不特別標。</summary>
         static int[] TilesUsedBy(GameAction action)
@@ -472,8 +470,17 @@ namespace Mahjong.View
         {
             handView.SetInteractable(false);
             actionButtons.Hide();
+            handView.ClearClaimHighlight();
             SetStatus("");
+
+            // 三家的手牌翻開，才看得到贏家到底做了什麼牌
+            tableView.RevealHands = true;
+            tableView.WinnerSeat = result == null ? -1 : result.WinnerSeat;
             RefreshAll();
+
+            SetStatus(UiFont.SupportsChinese ? "全部攤牌" : "Hands revealed");
+            yield return new WaitForSeconds(RevealPause);
+            SetStatus("");
 
             if (result != null && result.EndReason == GameEndReason.Win)
             {

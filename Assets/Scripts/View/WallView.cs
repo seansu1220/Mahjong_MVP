@@ -7,10 +7,12 @@ namespace Mahjong.View
     // 桌面中央的牌山
     //
     // 照實際打牌的擺法圍成一圈：144 張牌兩張一疊共 72 墩，
-    // 沿著牌桌四邊排成方形，中間空出來的地方就是四家的牌河。
+    // 沿著牌桌四邊排成方框，中間空出來的地方就是四家的牌河。
     //
-    // 每一墩畫成兩張錯開的牌背，看起來像疊起來的兩層。
-    // 摸牌後整體墩數會跟著減少，玩家一眼就知道還剩多少牌。
+    // 兩端會分別消失，跟真實牌局一致：
+    //   正常摸牌 → 從牌頭那端往後推進
+    //   補花、槓後補牌 → 從牌尾那端往回收
+    // 兩端目前的位置也對外公開，讓 Bootstrap 能演出「牌從這裡摸走」的動畫。
     //
     // 螢幕是 16:9 而不是正方形，所以上下兩邊排得比左右兩邊多，
     // 這樣圍出來的方框才貼合畫面比例。
@@ -28,11 +30,22 @@ namespace Mahjong.View
         const float StackGap = 1f;
         const float HorizontalSideY = 250f;         // 上下兩排離中心多遠
         const float VerticalSideX = 300f;           // 左右兩排離中心多遠
-        const float StackDepthOffset = 3f;          // 上層牌往右上錯開，做出疊兩層的厚度
+
+        // 上層牌往右上錯開，露出下層的邊，看起來才像疊了兩張
+        static readonly Vector2 UpperLayerOffset = new Vector2(3f, 7f);
 
         readonly List<GameObject> stacks = new List<GameObject>();
         Vector2[] stackPositions;
         bool[] stackRotated;
+
+        int headStack;                              // 牌頭那端目前推進到第幾墩
+        int tailStack = TotalStacks - 1;            // 牌尾那端目前收到第幾墩
+
+        /// <summary>下一張正常摸牌會從哪裡拿</summary>
+        public Vector2 HeadPosition => PositionOf(headStack);
+
+        /// <summary>下一張補牌（補花、槓後補牌）會從哪裡拿</summary>
+        public Vector2 TailPosition => PositionOf(tailStack);
 
         public static WallView Create(Transform parent)
         {
@@ -44,7 +57,14 @@ namespace Mahjong.View
             return view;
         }
 
-        /// <summary>先把 72 個墩位算好，之後只需依剩餘張數決定畫幾墩。</summary>
+        Vector2 PositionOf(int stackIndex)
+        {
+            if (stackPositions == null || stackPositions.Length == 0) return Vector2.zero;
+            int clamped = Mathf.Clamp(stackIndex, 0, stackPositions.Length - 1);
+            return stackPositions[clamped];
+        }
+
+        /// <summary>先把 72 個墩位算好，之後只需依兩端推進到哪決定畫哪幾墩。</summary>
         void BuildPositions()
         {
             var positions = new List<Vector2>();
@@ -84,16 +104,23 @@ namespace Mahjong.View
 
         // ------------------------------------------------------------
 
-        /// <summary>依牌山剩餘張數重畫。摸掉的牌會從尾端開始消失。</summary>
-        public void Refresh(int remainingTiles)
+        /// <summary>
+        /// 依牌山兩端各摸走多少張重畫。
+        /// </summary>
+        /// <param name="drawnFromHead">已經從牌頭摸走的張數</param>
+        /// <param name="drawnFromTail">已經從牌尾補走的張數</param>
+        public void Refresh(int drawnFromHead, int drawnFromTail)
         {
             Clear();
 
-            int remainingStacks = Mathf.Clamp(
-                Mathf.CeilToInt(remainingTiles / (float)TilesPerStack), 0, TotalStacks);
+            headStack = Mathf.Clamp(drawnFromHead / TilesPerStack, 0, TotalStacks);
+            tailStack = Mathf.Clamp(TotalStacks - 1 - drawnFromTail / TilesPerStack, -1, TotalStacks - 1);
 
-            for (int i = 0; i < remainingStacks && i < stackPositions.Length; i++)
+            for (int i = headStack; i <= tailStack && i < stackPositions.Length; i++)
+            {
+                if (i < 0) continue;
                 stacks.Add(BuildStack(stackPositions[i], stackRotated[i]));
+            }
         }
 
         /// <summary>一墩 = 兩張錯開的牌背，看起來就是疊了兩層。</summary>
@@ -104,13 +131,13 @@ namespace Mahjong.View
                              position, StackSize);
             if (rotated) holder.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
+            // 先畫下層再畫上層，上層才會蓋在前面
             for (int layer = 0; layer < TilesPerStack; layer++)
             {
                 var tile = TileView.Create(holder, TileView.NoTile, StackSize, faceUp: false);
                 tile.SetInteractable(false);
                 UIFactory.Anchor(tile.Rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                                 new Vector2(layer * StackDepthOffset * 0.5f, layer * StackDepthOffset),
-                                 StackSize);
+                                 UpperLayerOffset * layer, StackSize);
             }
             return holder.gameObject;
         }

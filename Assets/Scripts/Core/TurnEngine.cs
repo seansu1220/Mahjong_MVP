@@ -403,7 +403,8 @@ namespace Mahjong
             {
                 Type = MeldType.Pon,
                 BaseTile = action.Tile,
-                FromPlayer = State.LastDiscardFrom
+                FromPlayer = State.LastDiscardFrom,
+                ClaimedTile = action.Tile
             });
             return HandOverTurnTo(action, drawReplacement: false);
         }
@@ -416,7 +417,8 @@ namespace Mahjong
             {
                 Type = MeldType.MinKan,
                 BaseTile = action.Tile,
-                FromPlayer = State.LastDiscardFrom
+                FromPlayer = State.LastDiscardFrom,
+                ClaimedTile = action.Tile
             });
             return HandOverTurnTo(action, drawReplacement: true);
         }
@@ -433,7 +435,8 @@ namespace Mahjong
             {
                 Type = MeldType.Chi,
                 BaseTile = action.ChiBaseTile,
-                FromPlayer = State.LastDiscardFrom
+                FromPlayer = State.LastDiscardFrom,
+                ClaimedTile = action.Tile
             });
             return HandOverTurnTo(action, drawReplacement: false);
         }
