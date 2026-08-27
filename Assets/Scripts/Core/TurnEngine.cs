@@ -495,6 +495,25 @@ namespace Mahjong
         // 判定用的小工具
         // ------------------------------------------------------------
 
+        /// <summary>
+        /// 打掉這一張之後是不是聽牌。
+        /// 供畫面判斷能不能讓玩家宣告聽牌——宣告之後就固定牌型、摸到什麼打什麼。
+        /// 用會扣除副露的多載，槓光的牌不算聽張，避免宣告了卻是死聽。
+        /// </summary>
+        public bool IsReadyAfterDiscarding(int seat, int tile)
+        {
+            if (seat < 0 || seat >= GameState.PlayerCount) return false;
+            if (tile < 0 || tile >= TileDef.KINDS) return false;
+
+            var player = State.Players[seat];
+            if (player == null || player.ConcealedCounts[tile] == 0) return false;
+
+            player.ConcealedCounts[tile]--;
+            bool ready = WinChecker.GetWaits(player.ConcealedCounts, player.Melds).Count > 0;
+            player.ConcealedCounts[tile]++;
+            return ready;
+        }
+
         bool CanWinWithCurrentHand(int seat)
         {
             var player = State.Players[seat];

@@ -26,6 +26,8 @@ namespace Mahjong.View
         static readonly Color TableRim = new Color(0.05f, 0.18f, 0.13f);
         static readonly Color HintColor = new Color(0.55f, 0.62f, 0.57f);
         static readonly Color StatusColor = new Color(0.86f, 0.90f, 0.84f);
+        static readonly Color ReadyColor = new Color(1f, 0.78f, 0.30f);
+        static readonly Color ReadyButtonColor = new Color(0.72f, 0.45f, 0.10f);
 
         const float AiThinkDelay = 0.30f;
         const float DrawFlightDuration = 0.5f;
@@ -48,6 +50,10 @@ namespace Mahjong.View
 
         GameAction pendingHumanAction;
         List<GameAction> humanTurnOptions;
+
+        Button readyButton;
+        bool humanDeclaredReady;
+        bool readyAnnounced;
         int lastDrawnTile = TileView.NoTile;
         int dealerIndex;
         int dealerStreak;
@@ -94,6 +100,24 @@ namespace Mahjong.View
             dealAnimation = DealAnimation.Create(canvas.transform);
 
             BuildStatusLabels(canvas.transform);
+            BuildReadyButton(canvas.transform);
+        }
+
+        /// <summary>
+        /// 宣告聽牌用的按鈕。放在動作按鈕列右側僅有的那段空位，
+        /// 只有「打掉剛摸的那張之後仍然聽牌」時才會出現。
+        /// </summary>
+        void BuildReadyButton(Transform parent)
+        {
+            readyButton = UIFactory.CreateButton("Ready", parent,
+                                                 UiFont.SupportsChinese ? "聽" : "Ready",
+                                                 new Vector2(100f, 60f),
+                                                 ReadyButtonColor, Color.white,
+                                                 DeclareReady);
+            UIFactory.Anchor((RectTransform)readyButton.transform,
+                             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                             new Vector2(555f, 206f), new Vector2(100f, 60f));
+            readyButton.gameObject.SetActive(false);
         }
 
         void BuildBackground(Transform parent)
@@ -167,6 +191,9 @@ namespace Mahjong.View
             lastDrawnTile = TileView.NoTile;
             pendingHumanAction = null;
             humanTurnOptions = null;
+            humanDeclaredReady = false;
+            readyAnnounced = false;
+            readyButton.gameObject.SetActive(false);
             tableView.RevealHands = false;
             tableView.WinnerSeat = -1;
             winningHand.Hide();
@@ -273,11 +300,21 @@ namespace Mahjong.View
             bool isKan = chosen.Type == ActionType.AnKan || chosen.Type == ActionType.AddKan;
             var replacementPosition = tableView.NextReplacementPosition;
 
+            bool announceReady = seat == HumanSeat && humanDeclaredReady && !readyAnnounced;
+
             var result = engine.ApplyTurnAction(chosen);
             if (!result.Success)
             {
                 SetStatus(result.Error);
                 yield break;
+            }
+
+            if (announceReady)
+            {
+                readyAnnounced = true;
+                yield return announcement.Play(UiFont.SupportsChinese ? "聽" : "READY",
+                                               UiFont.SupportsChinese ? "牌型已固定" : "Hand locked",
+                                               ReadyColor);
             }
 
             // 槓完會補一張，補進來的那張要標示出來；打牌則清掉標示
@@ -304,7 +341,14 @@ namespace Mahjong.View
             var declarations = CollectAiDeclarations();
 
             var humanOptions = engine.GetClaimActions(HumanSeat);
-            if (HasRealChoice(humanOptions))
+
+            // 宣告聽牌之後不再吃碰槓，只有能胡才出手
+            if (humanDeclaredReady)
+            {
+                foreach (var option in humanOptions)
+                    if (option.Type == ActionType.Win) declarations.Add(option);
+            }
+            else if (HasRealChoice(humanOptions))
             {
                 yield return WaitForHumanClaim(humanOptions);
                 if (pendingHumanAction != null && pendingHumanAction.Type != ActionType.Pass)
@@ -392,15 +436,66 @@ namespace Mahjong.View
             pendingHumanAction = null;
             humanTurnOptions = engine.GetTurnActions(HumanSeat);
 
+            // 宣告聽牌之後牌型就固定了，摸到什麼打什麼，只有能胡才停下來
+            if (humanDeclaredReady)
+            {
+                pendingHumanAction = AutoPlayAction();
+                if (pendingHumanAction != null)
+                {
+                    SetStatus(UiFont.SupportsChinese ? "已聽牌，自動打出" : "Ready - auto discard");
+                    yield return new WaitForSeconds(AiThinkDelay);
+                    yield break;
+                }
+                // 理論上不會發生；真的找不到動作就退回手動，不要卡住牌局
+                humanDeclaredReady = false;
+            }
+
             SetStatus(UiFont.SupportsChinese ? "輪到你出牌（點兩下打出）" : "Your turn: tap twice");
             actionButtons.Show(humanTurnOptions);
+            readyButton.gameObject.SetActive(CanDeclareReadyNow());
             handView.SetInteractable(true);
 
             while (pendingHumanAction == null) yield return null;
 
             handView.SetInteractable(false);
             actionButtons.Hide();
+            readyButton.gameObject.SetActive(false);
             SetStatus("");
+        }
+
+        /// <summary>剛摸的那張打掉之後仍然聽牌，才讓玩家宣告</summary>
+        bool CanDeclareReadyNow()
+            => !humanDeclaredReady
+               && lastDrawnTile != TileView.NoTile
+               && engine.IsReadyAfterDiscarding(HumanSeat, lastDrawnTile);
+
+        void DeclareReady()
+        {
+            if (!CanDeclareReadyNow()) return;
+            humanDeclaredReady = true;
+            pendingHumanAction = FindDiscardAction(lastDrawnTile);
+        }
+
+        /// <summary>宣告聽牌後的自動決策：能胡就胡，否則打掉剛摸的那張。</summary>
+        GameAction AutoPlayAction()
+        {
+            foreach (var option in humanTurnOptions)
+                if (option.Type == ActionType.Win) return option;
+
+            var drawn = FindDiscardAction(lastDrawnTile);
+            if (drawn != null) return drawn;
+
+            foreach (var option in humanTurnOptions)
+                if (option.Type == ActionType.Discard) return option;
+            return null;
+        }
+
+        GameAction FindDiscardAction(int tile)
+        {
+            if (humanTurnOptions == null) return null;
+            foreach (var option in humanTurnOptions)
+                if (option.Type == ActionType.Discard && option.Tile == tile) return option;
+            return null;
         }
 
         IEnumerator WaitForHumanClaim(List<GameAction> options)
@@ -479,6 +574,7 @@ namespace Mahjong.View
         {
             handView.SetInteractable(false);
             actionButtons.Hide();
+            readyButton.gameObject.SetActive(false);
             handView.ClearClaimHighlight();
             SetStatus("");
 

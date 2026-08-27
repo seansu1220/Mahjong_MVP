@@ -9,10 +9,16 @@ namespace Mahjong.View
     // 照實際打牌的擺法圍成一圈：144 張牌兩張一疊共 72 墩，
     // 沿著牌桌四邊排成方框，中間空出來的地方就是四家的牌河。
     //
-    // 兩端會分別消失，跟真實牌局一致：
+    // 排列方向跟出牌順序一致，都是逆時針：
+    //   下排 左→右 ／ 右排 下→上 ／ 上排 右→左 ／ 左排 上→下
+    // 所以摸牌時牌會照著同一個方向一路消失，
+    // 對家面前的牌就會從右邊往左邊減少，跟真的在牌桌上摸一樣。
+    //
+    // 兩端分別推進：
     //   正常摸牌 → 從牌頭那端往後推進
     //   補花、槓後補牌 → 從牌尾那端往回收
-    // 兩端目前的位置也對外公開，讓 Bootstrap 能演出「牌從這裡摸走」的動畫。
+    //
+    // 一墩兩張，只摸走一張時要看得出那一墩只剩下層那張。
     //
     // 螢幕是 16:9 而不是正方形，所以上下兩邊排得比左右兩邊多，
     // 這樣圍出來的方框才貼合畫面比例。
@@ -60,44 +66,50 @@ namespace Mahjong.View
         Vector2 PositionOf(int stackIndex)
         {
             if (stackPositions == null || stackPositions.Length == 0) return Vector2.zero;
-            int clamped = Mathf.Clamp(stackIndex, 0, stackPositions.Length - 1);
-            return stackPositions[clamped];
+            return stackPositions[Mathf.Clamp(stackIndex, 0, stackPositions.Length - 1)];
         }
 
-        /// <summary>先把 72 個墩位算好，之後只需依兩端推進到哪決定畫哪幾墩。</summary>
+        /// <summary>
+        /// 先把 72 個墩位依逆時針順序算好，之後只需依兩端推進到哪決定畫哪幾墩。
+        /// 四邊的行進方向必須首尾相接，摸牌才會沿著同一個方向繞著消失。
+        /// </summary>
         void BuildPositions()
         {
             var positions = new List<Vector2>();
             var rotated = new List<bool>();
 
-            AddHorizontalSide(positions, rotated, -HorizontalSideY);   // 下
-            AddVerticalSide(positions, rotated, VerticalSideX);        // 右
-            AddHorizontalSide(positions, rotated, HorizontalSideY);    // 上
-            AddVerticalSide(positions, rotated, -VerticalSideX);       // 左
+            AddHorizontalSide(positions, rotated, -HorizontalSideY, leftToRight: true);   // 下：左→右
+            AddVerticalSide(positions, rotated, VerticalSideX, bottomToTop: true);        // 右：下→上
+            AddHorizontalSide(positions, rotated, HorizontalSideY, leftToRight: false);   // 上：右→左
+            AddVerticalSide(positions, rotated, -VerticalSideX, bottomToTop: false);      // 左：上→下
 
             stackPositions = positions.ToArray();
             stackRotated = rotated.ToArray();
         }
 
-        static void AddHorizontalSide(List<Vector2> positions, List<bool> rotated, float y)
+        static void AddHorizontalSide(List<Vector2> positions, List<bool> rotated,
+                                      float y, bool leftToRight)
         {
             float step = StackSize.x + StackGap;
-            float start = -(StacksOnHorizontalSide - 1) * step * 0.5f;
+            float extent = (StacksOnHorizontalSide - 1) * step * 0.5f;
             for (int i = 0; i < StacksOnHorizontalSide; i++)
             {
-                positions.Add(new Vector2(start + i * step, y));
+                float offset = -extent + i * step;
+                positions.Add(new Vector2(leftToRight ? offset : -offset, y));
                 rotated.Add(false);
             }
         }
 
-        static void AddVerticalSide(List<Vector2> positions, List<bool> rotated, float x)
+        static void AddVerticalSide(List<Vector2> positions, List<bool> rotated,
+                                    float x, bool bottomToTop)
         {
             // 側邊的牌是橫躺的，所以間距用牌的高度來算
             float step = StackSize.y + StackGap;
-            float start = -(StacksOnVerticalSide - 1) * step * 0.5f;
+            float extent = (StacksOnVerticalSide - 1) * step * 0.5f;
             for (int i = 0; i < StacksOnVerticalSide; i++)
             {
-                positions.Add(new Vector2(x, start + i * step));
+                float offset = -extent + i * step;
+                positions.Add(new Vector2(x, bottomToTop ? offset : -offset));
                 rotated.Add(true);
             }
         }
@@ -116,15 +128,28 @@ namespace Mahjong.View
             headStack = Mathf.Clamp(drawnFromHead / TilesPerStack, 0, TotalStacks);
             tailStack = Mathf.Clamp(TotalStacks - 1 - drawnFromTail / TilesPerStack, -1, TotalStacks - 1);
 
+            // 摸走奇數張時，最前面那一墩的上層已經被拿走，只剩下層那張
+            bool headHalfTaken = drawnFromHead % TilesPerStack != 0;
+            bool tailHalfTaken = drawnFromTail % TilesPerStack != 0;
+
             for (int i = headStack; i <= tailStack && i < stackPositions.Length; i++)
             {
                 if (i < 0) continue;
-                stacks.Add(BuildStack(stackPositions[i], stackRotated[i]));
+
+                int layers = TilesPerStack;
+                if (i == headStack && headHalfTaken) layers--;
+                if (i == tailStack && tailHalfTaken) layers--;
+                if (layers <= 0) continue;
+
+                stacks.Add(BuildStack(stackPositions[i], stackRotated[i], layers));
             }
         }
 
-        /// <summary>一墩 = 兩張錯開的牌背，看起來就是疊了兩層。</summary>
-        GameObject BuildStack(Vector2 position, bool rotated)
+        /// <summary>
+        /// 畫一墩。layers 為 2 時是完整的兩張；為 1 時只畫下層，
+        /// 看起來就是上面那張已經被摸走了。
+        /// </summary>
+        GameObject BuildStack(Vector2 position, bool rotated, int layers)
         {
             var holder = UIFactory.CreateRect("Stack", transform);
             UIFactory.Anchor(holder, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
@@ -132,7 +157,7 @@ namespace Mahjong.View
             if (rotated) holder.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
             // 先畫下層再畫上層，上層才會蓋在前面
-            for (int layer = 0; layer < TilesPerStack; layer++)
+            for (int layer = 0; layer < layers; layer++)
             {
                 var tile = TileView.Create(holder, TileView.NoTile, StackSize, faceUp: false);
                 tile.SetInteractable(false);

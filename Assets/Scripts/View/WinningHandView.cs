@@ -7,34 +7,32 @@ namespace Mahjong.View
     // ============================================================
     // 結算時攤在中央的贏家牌型
     //
-    // 由左至右分成三段，每段之間留出間隔：
+    // 由左至右分成三段，每段之間留出明顯的間隔：
     //   1. 手上剩下的牌（不含胡的那張）
-    //   2. 吃碰槓露出來的副露，一組一組分開
+    //   2. 吃碰槓露出來的副露，每一組之間也再分開
     //   3. 胡的那一張，單獨擺在最右邊
     //
-    // 這樣一眼就看得出這副牌是怎麼組成的、最後是靠哪一張成的。
+    // 不加任何說明文字——牌本身的分段就看得出來了。
     // ============================================================
 
     public class WinningHandView : MonoBehaviour
     {
         static readonly Vector2 TileSize = new Vector2(52f, 71f);
         const float TileGap = 3f;
-        const float SectionGap = 34f;      // 手牌、副露、胡牌張三段之間的間隔
-        const float MeldGap = 16f;         // 副露每一組之間的間隔
+        const float SectionGap = 56f;      // 手牌、副露、胡牌張三段之間的間隔
+        const float MeldGap = 30f;         // 副露每一組之間的間隔
 
         static readonly Color BackdropColor = new Color(0f, 0f, 0f, 0.78f);
-        static readonly Color CaptionColor = new Color(1f, 0.88f, 0.45f);
 
         RectTransform row;
         Image backdrop;
-        Text caption;
         readonly List<GameObject> tiles = new List<GameObject>();
 
         public static WinningHandView Create(Transform parent)
         {
             var rect = UIFactory.CreateRect("WinningHandView", parent);
             UIFactory.Anchor(rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             new Vector2(0f, 285f), new Vector2(1700f, 140f));
+                             new Vector2(0f, 285f), new Vector2(1760f, 108f));
 
             var view = rect.gameObject.AddComponent<WinningHandView>();
             view.Build();
@@ -47,13 +45,9 @@ namespace Mahjong.View
             backdrop = UIFactory.CreateImage("Backdrop", transform, BackdropColor);
             UIFactory.Stretch(backdrop.rectTransform);
 
-            caption = UIFactory.CreateText("Caption", transform, "", 22, CaptionColor);
-            UIFactory.Anchor(caption.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                             new Vector2(0f, -6f), new Vector2(900f, 26f));
-
             row = UIFactory.CreateRect("Row", transform);
-            UIFactory.Anchor(row, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 12f), new Vector2(1700f, TileSize.y));
+            UIFactory.Anchor(row, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                             Vector2.zero, new Vector2(1760f, TileSize.y));
         }
 
         // ------------------------------------------------------------
@@ -83,9 +77,6 @@ namespace Mahjong.View
                 LayoutTiles(new List<int> { winningTile }, cursor);
             }
 
-            caption.text = UiFont.SupportsChinese
-                ? "手牌　→　吃碰槓　→　胡的那張"
-                : "Hand  →  Melds  →  Winning tile";
             gameObject.SetActive(true);
         }
 

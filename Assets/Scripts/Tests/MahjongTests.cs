@@ -66,6 +66,7 @@ namespace Mahjong.Tests
             t.TestFullGameWithAi();
             t.TestClaimedTileIsRecorded();
             t.TestWallTracksHeadAndTailDraws();
+            t.TestIsReadyAfterDiscarding();
             t.Report();
             return t.failed == 0;
         }
@@ -1004,6 +1005,35 @@ namespace Mahjong.Tests
             Assert(wall.DrawnFromHead == 3, "從牌頭摸走的張數要正確");
             Assert(wall.DrawnFromTail == 1, "從牌尾補走的張數要正確");
             Assert(wall.Remaining == 140, "剩餘張數 = 總數 - 頭尾摸走的");
+        }
+
+        void TestIsReadyAfterDiscarding()
+        {
+            // 123萬 456萬 789萬 123筒 + 東東 + 5筒6筒 已聽 4筒/7筒，再摸進一張 9條
+            var state = BlankBoard();
+            GiveTiles(state.Players[0], 0,1,2, 3,4,5, 6,7,8, 9,10,11, 27,27, 13,14, 26);
+            state.Phase = GamePhase.WaitingDiscard;
+            state.CurrentPlayer = 0;
+            state.HasDrawnThisTurn = true;
+
+            var engine = new TurnEngine(state, FanTable.Default());
+
+            Assert(engine.IsReadyAfterDiscarding(0, 26), "打掉剛摸的 9條之後仍然聽牌");
+            Assert(!engine.IsReadyAfterDiscarding(0, 27), "打掉東之後不聽牌");
+            Assert(!engine.IsReadyAfterDiscarding(0, 30), "手上沒有的牌不能拿來判斷");
+
+            // 判斷過後手牌必須完整還原，不能被查詢弄髒
+            Assert(state.Players[0].ConcealedTileCount == 17, "查詢聽牌不得改動手牌");
+
+            // 死聽不算聽牌：暗槓掉四張九筒後單吊九筒
+            var deadWait = BlankBoard();
+            deadWait.Players[0].Melds.Add(new Meld
+            {
+                Type = MeldType.AnKan, BaseTile = 17, FromPlayer = 0
+            });
+            GiveTiles(deadWait.Players[0], 0,1,2, 3,4,5, 6,7,8, 9,10,11, 17, 26);
+            var deadEngine = new TurnEngine(deadWait, FanTable.Default());
+            Assert(!deadEngine.IsReadyAfterDiscarding(0, 26), "九筒已被自己槓光，死聽不算聽牌");
         }
 
         static bool RunGameWithAi(TurnEngine engine, AIPlayer[] players, out string failure)
