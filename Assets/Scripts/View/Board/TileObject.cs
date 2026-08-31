@@ -34,6 +34,13 @@ namespace Mahjong.View.Board
         MeshRenderer backRenderer;
         MaterialPropertyBlock tintBlock;
 
+        // MaterialPropertyBlock 設 _Color 是「取代」材質原本的顏色而不是相乘，
+        // 所以要自己記住每一層的底色，上色時再乘上去，
+        // 否則綠色牌背會被白色的 tint 整片蓋掉。
+        Color faceBaseColor = Color.white;
+        Vector3 basePosition;
+        Quaternion baseRotation;
+
         /// <summary>這張牌的 id；蓋著或未知為 NoTile</summary>
         public int Tile { get; private set; } = NoTile;
 
@@ -91,16 +98,30 @@ namespace Mahjong.View.Board
         public void SetTile(int tile)
         {
             Tile = tile;
-            faceRenderer.sharedMaterial = tile == NoTile
+
+            bool unknown = tile == NoTile;
+            faceRenderer.sharedMaterial = unknown
                 ? TileAssets.BodyMaterial
                 : TileAssets.FaceMaterial(tile);
+
+            // 牌面有貼圖時底色要是白的，貼圖顏色才不會被染到
+            faceBaseColor = unknown ? TileAssets.BodyColor : Color.white;
         }
 
         /// <summary>擺放位置與朝向。朝向由 BoardLayout 算好。</summary>
         public void Place(Vector3 position, Quaternion rotation)
         {
+            basePosition = position;
+            baseRotation = rotation;
             transform.localPosition = position;
             transform.localRotation = rotation;
+        }
+
+        /// <summary>把牌從原位抬起來一點，做出「被拿起來」的感覺。</summary>
+        public void SetLift(Vector3 offset)
+        {
+            transform.localPosition = basePosition + offset;
+            transform.localRotation = baseRotation;
         }
 
         // ------------------------------------------------------------
@@ -114,11 +135,16 @@ namespace Mahjong.View.Board
 
         void ApplyTint(Color tint)
         {
+            SetRendererColor(bodyRenderer, TileAssets.BodyColor * tint);
+            SetRendererColor(faceRenderer, faceBaseColor * tint);
+            SetRendererColor(backRenderer, TileAssets.BackColor * tint);
+        }
+
+        void SetRendererColor(MeshRenderer renderer, Color color)
+        {
             tintBlock.Clear();
-            tintBlock.SetColor("_Color", tint);
-            bodyRenderer.SetPropertyBlock(tintBlock);
-            faceRenderer.SetPropertyBlock(tintBlock);
-            backRenderer.SetPropertyBlock(tintBlock);
+            tintBlock.SetColor("_Color", color);
+            renderer.SetPropertyBlock(tintBlock);
         }
 
         public void SetVisible(bool visible)

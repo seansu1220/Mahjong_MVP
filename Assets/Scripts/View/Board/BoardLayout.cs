@@ -12,8 +12,9 @@ namespace Mahjong.View.Board
     //   手牌   z = -2.42   立著，牌面朝 -Z（朝向自己與攝影機）
     //   副露   z = -2.02   平躺攤開，牌面朝上
     //   牌河   z = -1.40 起往桌心排，平躺，牌面朝上
-    //   牌山   離桌心 1.70，圍成方框
+    //   牌山   離桌心 1.86，四邊圍成方框
     //
+    // 方位順序：0 自己（近端）、1 右手邊的下家、2 對家、3 左家，即逆時針。
     // 攝影機從自己身後上方俯視，所以近端的自己最大、對家因透視自然變小。
     // ============================================================
 
@@ -24,7 +25,8 @@ namespace Mahjong.View.Board
         // ---- 各區塊離桌心多遠 ----
         public const float HandDistance = 2.42f;
         public const float MeldDistance = 2.02f;
-        public const float WallDistance = 1.70f;
+        // 一邊 18 墩共 3.67 寬，離桌心 1.86 四角才剛好接起來
+        public const float WallDistance = 1.86f;
         public const float FirstDiscardRow = 1.40f;
 
         // ---- 排列間距 ----
@@ -41,6 +43,12 @@ namespace Mahjong.View.Board
 
         /// <summary>手牌與副露之間留的空隙</summary>
         public const float HandToMeldGap = 0.09f;
+
+        /// <summary>選取的牌抬起來的位移：往上再往自己這邊挪一點</summary>
+        public static readonly Vector3 SelectedLift = new Vector3(0f, 0.055f, -0.060f);
+
+        /// <summary>叫牌提示抬得比選取淺一些</summary>
+        public static readonly Vector3 ClaimLift = new Vector3(0f, 0.030f, -0.030f);
 
         // ---- 牌桌本體 ----
         public const float TableSize = 5.8f;
@@ -67,9 +75,12 @@ namespace Mahjong.View.Board
         public static readonly Quaternion LyingFaceDown =
             Quaternion.LookRotation(Vector3.down, Vector3.forward);
 
-        /// <summary>某個方位的整體旋轉。0 是自己（近端），之後逆時針。</summary>
+        /// <summary>
+        /// 某個方位的整體旋轉。0 是自己（近端），1 是右手邊的下家，接著上家、左家。
+        /// 繞 Y 軸要往負的方向轉：正 90 度會把下家轉到左邊去，順序就反了。
+        /// </summary>
         public static Quaternion SeatRotation(int displayIndex)
-            => Quaternion.AngleAxis(90f * displayIndex, Vector3.up);
+            => Quaternion.AngleAxis(-90f * displayIndex, Vector3.up);
 
         /// <summary>把座位本地的擺放換算成世界座標</summary>
         public static void ToWorld(int displayIndex, Vector3 localPosition, Quaternion localRotation,

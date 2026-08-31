@@ -30,8 +30,11 @@ namespace Mahjong.View.Board
         /// <summary>烘焙用的臨時物件放得離牌桌很遠，主攝影機不會拍到</summary>
         static readonly Vector3 BakeOrigin = new Vector3(0f, 5000f, 0f);
 
-        static readonly Color BodyColor = new Color(0.94f, 0.93f, 0.88f);
-        static readonly Color BackColor = new Color(0.13f, 0.47f, 0.29f);
+        /// <summary>牌身的白色。上色時要乘在這個底色上，不能直接取代。</summary>
+        public static readonly Color BodyColor = new Color(0.94f, 0.93f, 0.88f);
+
+        /// <summary>牌背的綠色</summary>
+        public static readonly Color BackColor = new Color(0.13f, 0.47f, 0.29f);
         static readonly Color FaceBackground = new Color(0.985f, 0.978f, 0.955f);
 
         static readonly Color ManColor = new Color(0.70f, 0.13f, 0.13f);
@@ -153,7 +156,11 @@ namespace Mahjong.View.Board
 
                 camera = new GameObject("BakeCamera").AddComponent<Camera>();
                 camera.transform.SetParent(root.transform, worldPositionStays: false);
-                camera.transform.localPosition = new Vector3(0f, 0f, -10f);
+
+                // uGUI 的內容面向 +Z，所以攝影機要站在 +Z 那一側回頭看，
+                // 站到 -Z 去會看到背面，字會左右相反。
+                camera.transform.localPosition = new Vector3(0f, 0f, 10f);
+                camera.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 camera.orthographic = true;
                 camera.orthographicSize = FaceTextureHeight * 0.5f;
                 camera.clearFlags = CameraClearFlags.SolidColor;
@@ -188,6 +195,16 @@ namespace Mahjong.View.Board
             public Texture2D Bake(int tile)
             {
                 ApplyFace(tile);
+
+                // Canvas 的網格是在畫面更新時才重建的。剛改完文字就直接 Render()
+                // 會拍到還沒建好的畫面，結果就是一片空白，所以要先強制更新。
+                var font = UiFont.Current;
+                if (font != null)
+                {
+                    font.RequestCharactersInTexture(rankLabel.text, rankLabel.fontSize);
+                    font.RequestCharactersInTexture(suitLabel.text, suitLabel.fontSize);
+                }
+                Canvas.ForceUpdateCanvases();
 
                 camera.Render();
 

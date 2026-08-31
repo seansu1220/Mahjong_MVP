@@ -434,11 +434,17 @@ namespace Mahjong.View.Board
             for (int i = 0; i < handTiles.Count; i++)
             {
                 var tile = handTiles[i];
+                bool isSelected = tile == selectedTile;
+                bool isClaimTile = claimHighlightSlots.Contains(i);
+
                 if (handInteractable) tile.SetNormal();
                 else tile.SetDimmed();
+                if (isClaimTile) tile.SetClaimHighlight();
+                if (isSelected) tile.SetSelected();
 
-                if (claimHighlightSlots.Contains(i)) tile.SetClaimHighlight();
-                if (tile == selectedTile) tile.SetSelected();
+                // 選到的牌整張抬起來，跟真的把牌拿出來一樣
+                tile.SetLift(isSelected ? BoardLayout.SelectedLift
+                           : (isClaimTile ? BoardLayout.ClaimLift : Vector3.zero));
             }
         }
 
