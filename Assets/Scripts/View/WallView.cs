@@ -32,13 +32,16 @@ namespace Mahjong.View
         const int StacksOnHorizontalSide = 22;      // 上下兩邊各排幾墩
         const int StacksOnVerticalSide = 14;        // 左右兩邊各排幾墩
 
-        static readonly Vector2 StackSize = new Vector2(24f, 32f);
+        static readonly Vector2 StackSize = new Vector2(26f, 35f);
         const float StackGap = 1f;
         const float HorizontalSideY = 250f;         // 上下兩排離中心多遠
         const float VerticalSideX = 300f;           // 左右兩排離中心多遠
 
-        // 上層牌往右上錯開，露出下層的邊，看起來才像疊了兩張
-        static readonly Vector2 UpperLayerOffset = new Vector2(3f, 7f);
+        // 上層牌往右上錯開，露出下層牌身的白邊，看起來才像實實在在疊了兩張
+        static readonly Vector2 UpperLayerOffset = new Vector2(2f, 10f);
+
+        /// <summary>下層那張壓暗一點，上下層才分得出來</summary>
+        const float LowerLayerShade = 0.84f;
 
         readonly List<GameObject> stacks = new List<GameObject>();
         Vector2[] stackPositions;
@@ -163,6 +166,9 @@ namespace Mahjong.View
                 tile.SetInteractable(false);
                 UIFactory.Anchor(tile.Rect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                                  UpperLayerOffset * layer, StackSize);
+
+                bool isLowerLayer = layers == TilesPerStack && layer == 0;
+                if (isLowerLayer) tile.SetShade(LowerLayerShade);
             }
             return holder.gameObject;
         }
