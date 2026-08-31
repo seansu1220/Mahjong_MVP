@@ -6,74 +6,102 @@ namespace Mahjong.View.Board
     // 牌桌的世界座標配置
     //
     // 先以「自己這一家」為基準把所有位置算在座位本地座標，
-    // 再依座位方位整個繞 Y 軸轉 90 度的倍數，四家就都排好了。
-    //
-    // 座位本地座標（自己在近端，面向 -Z）：
-    //   手牌   z = -2.42   立著，牌面朝 -Z（只畫三家對手，自己的手牌由 2D 負責）
-    //   副露   z = -2.02   平躺攤開，牌面朝上
-    //   牌河   z = -1.40 起往桌心排，平躺，牌面朝上
-    //   牌山   離桌心 1.86，四邊圍成方框
-    //
+    // 再依方位整個繞 Y 軸轉 -90 度的倍數，四家就都排好了。
     // 方位順序：0 自己（近端）、1 右手邊的下家、2 對家、3 左家，即逆時針。
-    // 攝影機從自己身後上方俯視，所以近端的自己最大、對家因透視自然變小。
+    //
+    // 各區塊離桌心多遠**不寫死**，一律從牌的尺寸與墩數推算：
+    //
+    //   牌山   由「一邊排幾墩」決定，四角剛好接起來又不互相穿插
+    //   副露   排在牌山外側，平躺攤開
+    //   手牌   排在副露外側，立著（只畫三家對手，自己的手牌由 2D 負責）
+    //   牌河   在牌山圍出來的內側，往桌心排
+    //
+    // 寫死距離的話，只要改了牌的大小或墩數，四個角就會重疊或裂開，
+    // 而且很難看出是哪個數字沒跟著改。
+    //
+    // 攝影機從自己身後上方俯視，近端的自己最大、對家因透視自然變小。
     // ============================================================
 
     public static class BoardLayout
     {
         public const int SeatCount = GameState.PlayerCount;
 
-        // ---- 各區塊離桌心多遠 ----
-        public const float HandDistance = 2.42f;
-        public const float MeldDistance = 2.02f;
-        // 一邊 18 墩共 3.67 寬，離桌心 1.86 四角才剛好接起來
-        public const float WallDistance = 1.86f;
-        public const float FirstDiscardRow = 1.40f;
-
         // ---- 排列間距 ----
         public const float HandStep = TileAssets.Width + 0.006f;
         public const float MeldStep = TileAssets.Width + 0.004f;
         public const float MeldGroupGap = 0.075f;
+
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
         public const float DiscardStepZ = TileAssets.Height + 0.060f;
-        public const float WallStep = TileAssets.Width + 0.004f;
+
+        // 牌山每墩之間也留一點縫，才看得出是一墩一墩疊起來的
+        public const float WallStep = TileAssets.Width + 0.014f;
 
         public const int DiscardsPerRow = 8;
+
+        /// <summary>牌河最多排幾列。超過就把每列加寬，不讓牌河往桌心蔓延過去。</summary>
+        public const int MaxDiscardRows = 3;
+
         public const int WallStacksPerSide = 18;
         public const int WallTilesPerStack = 2;
 
         /// <summary>手牌與副露之間留的空隙</summary>
         public const float HandToMeldGap = 0.09f;
 
-        // 純粹往上抬。原本還往自己這邊挪，但攝影機是俯視的，
-        // 往自己挪在畫面上看起來就是「往下移」，反而不像被拿起來。
-        /// <summary>選取的牌抬起來的高度</summary>
-        public static readonly Vector3 SelectedLift = new Vector3(0f, 0.14f, 0f);
+        // ---- 各區塊之間的留白 ----
+        const float WallCornerGap = 0.03f;
+        const float WallToMeldGap = 0.11f;
+        const float MeldToHandGap = 0.13f;
+        const float FirstDiscardInset = 0.16f;
 
-        /// <summary>叫牌提示抬得比選取淺一些</summary>
-        public static readonly Vector3 ClaimLift = new Vector3(0f, 0.07f, 0f);
+        // ------------------------------------------------------------
+        // 由牌的尺寸推算出來的距離
+        // ------------------------------------------------------------
 
-        // ---- 牌桌本體 ----
-        public const float TableSize = 5.8f;
+        /// <summary>牌山一邊從中點算起有多長（含最外那張牌的一半寬度）</summary>
+        static float WallHalfLength =>
+            (WallStacksPerSide - 1) * WallStep * 0.5f + TileAssets.Width * 0.5f;
+
+        /// <summary>
+        /// 牌山離桌心多遠。相鄰兩邊在角落不能互相穿插，
+        /// 所以這一邊的長度必須落在另一邊的內緣之外。
+        /// </summary>
+        public static float WallDistance =>
+            WallHalfLength + TileAssets.Height * 0.5f + WallCornerGap;
+
+        /// <summary>副露平躺，排在牌山外側</summary>
+        public static float MeldDistance =>
+            WallDistance + TileAssets.Height + WallToMeldGap;
+
+        /// <summary>對手的手牌立著，排在副露外側</summary>
+        public static float HandDistance =>
+            MeldDistance + TileAssets.Height * 0.5f + TileAssets.Depth * 0.5f + MeldToHandGap;
+
+        /// <summary>牌河第一列離桌心多遠，從牌山內緣再往內縮一點</summary>
+        static float FirstDiscardRow =>
+            WallDistance - TileAssets.Height * 0.5f - FirstDiscardInset;
+
+        /// <summary>桌面要蓋得住最外圈的手牌</summary>
+        public static float TableSize =>
+            (HandDistance + TileAssets.Height * 0.5f + 0.35f) * 2f;
+
         public const float TableThickness = 0.16f;
 
-        // ---- 攝影機（想調整視角就改這三個值）----
-        // 自己的手牌改由 2D 畫在畫面下緣，所以視線往前壓一點，
-        // 把牌桌整體帶高，下緣空出來給手牌那一排。
-        public static readonly Vector3 CameraPosition = new Vector3(0f, 3.55f, -4.10f);
-        public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, -1.05f);
+        // ---- 攝影機（想調整視角就改這三個比例）----
+        public static Vector3 CameraPosition =>
+            new Vector3(0f, TableSize * 0.60f, -TableSize * 0.74f);
+
+        public static Vector3 CameraTarget =>
+            new Vector3(0f, 0f, -TableSize * 0.16f);
+
         public const float CameraFieldOfView = 44f;
 
         // ------------------------------------------------------------
         // 基本朝向
         // ------------------------------------------------------------
 
-        /// <summary>
-        /// 立著、牌面朝向自己（本地 -Z）。三家對手的手牌都是這樣正常立著。
-        ///
-        /// 自己的手牌不在這裡畫——攝影機俯視牌桌，立著的牌只看得到上緣，
-        /// 把牌後仰又很不自然，所以自己的手牌交給 2D 的 HandStrip 畫在畫面下緣。
-        /// </summary>
+        /// <summary>立著、牌面朝向自己（本地 -Z）。三家對手的手牌都是這樣正常立著。</summary>
         public static readonly Quaternion StandingFacingOwner =
             Quaternion.LookRotation(Vector3.back, Vector3.up);
 
@@ -116,21 +144,24 @@ namespace Mahjong.View.Board
             return -total * 0.5f;
         }
 
-        /// <summary>
-        /// 手牌後仰之後高度會變矮、厚度會佔到高度，
-        /// 中心點要跟著調整，牌才會剛好貼在桌面上而不是陷進去或浮起來。
-        /// </summary>
         public static Vector3 HandSlot(float x)
             => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
 
         public static Vector3 MeldSlot(float x)
             => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);
 
-        public static Vector3 DiscardSlot(int index)
+        /// <summary>
+        /// 牌河要排幾欄。牌打多了就把每一列加寬，而不是往桌心再多排一列，
+        /// 否則牌河會一路蔓延到桌子中間跟對家的牌河撞在一起。
+        /// </summary>
+        public static int DiscardColumns(int discardCount)
+            => Mathf.Max(DiscardsPerRow, Mathf.CeilToInt(discardCount / (float)MaxDiscardRows));
+
+        public static Vector3 DiscardSlot(int index, int columns)
         {
-            int column = index % DiscardsPerRow;
-            int row = index / DiscardsPerRow;
-            float x = (column - (DiscardsPerRow - 1) * 0.5f) * DiscardStepX;
+            int column = index % columns;
+            int row = index / columns;
+            float x = (column - (columns - 1) * 0.5f) * DiscardStepX;
             float z = -FirstDiscardRow + row * DiscardStepZ;
             return new Vector3(x, TileAssets.Depth * 0.5f, z);
         }

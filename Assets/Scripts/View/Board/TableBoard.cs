@@ -145,7 +145,6 @@ namespace Mahjong.View.Board
                 DrawSeat(state, seat, offset);
             }
 
-            DrawWinningShowcase();
             HideUnusedTiles();
         }
 
@@ -246,8 +245,9 @@ namespace Mahjong.View.Board
 
         void DrawDiscards(List<int> discards, int displayIndex)
         {
+            int columns = BoardLayout.DiscardColumns(discards.Count);
             for (int i = 0; i < discards.Count; i++)
-                PlaceTile(discards[i], displayIndex, BoardLayout.DiscardSlot(i),
+                PlaceTile(discards[i], displayIndex, BoardLayout.DiscardSlot(i, columns),
                           BoardLayout.LyingFaceUp);
         }
 
@@ -260,78 +260,6 @@ namespace Mahjong.View.Board
             var tile = TakeTile();
             tile.SetTile(tileId);
             tile.Place(position, rotation);
-        }
-
-        // ------------------------------------------------------------
-        // 結算時攤在桌心的贏家牌型
-        // ------------------------------------------------------------
-
-        const float ShowcaseZ = 0.05f;
-        const float ShowcaseSectionGap = 0.14f;
-
-        PlayerState showcaseWinner;
-        int showcaseWinningTile = TileObject.NoTile;
-
-        /// <summary>攤出贏家的牌：手牌 → 副露 → 胡的那張，段與段之間留空隙。</summary>
-        public void ShowWinningHand(PlayerState winner, int winningTile)
-        {
-            showcaseWinner = winner;
-            showcaseWinningTile = winningTile;
-        }
-
-        public void HideWinningHand()
-        {
-            showcaseWinner = null;
-            showcaseWinningTile = TileObject.NoTile;
-        }
-
-        /// <summary>攤在桌心的牌一律平躺朝上——俯視角度下平躺比立著好讀。</summary>
-        void DrawWinningShowcase()
-        {
-            if (showcaseWinner == null) return;
-
-            var concealed = CollectHand(showcaseWinner);
-            if (showcaseWinningTile != TileObject.NoTile) concealed.Remove(showcaseWinningTile);
-
-            float width = MeasureShowcase(concealed.Count, showcaseWinner.Melds);
-            float cursor = -width * 0.5f;
-
-            cursor = PlaceShowcaseTiles(concealed, cursor);
-
-            foreach (var meld in showcaseWinner.Melds)
-            {
-                cursor += ShowcaseSectionGap;
-                var layout = MeldDisplay.Arrange(meld);
-                cursor = PlaceShowcaseTiles(new List<int>(layout.Tiles), cursor);
-            }
-
-            if (showcaseWinningTile != TileObject.NoTile)
-            {
-                cursor += ShowcaseSectionGap;
-                PlaceShowcaseTiles(new List<int> { showcaseWinningTile }, cursor);
-            }
-        }
-
-        static float MeasureShowcase(int concealedCount, List<Meld> melds)
-        {
-            float width = concealedCount * BoardLayout.MeldStep;
-            foreach (var meld in melds)
-                width += ShowcaseSectionGap + meld.Tiles().Length * BoardLayout.MeldStep;
-            return width;
-        }
-
-        float PlaceShowcaseTiles(List<int> tileIds, float cursor)
-        {
-            foreach (int tileId in tileIds)
-            {
-                var tile = TakeTile();
-                tile.SetTile(tileId);
-                tile.Place(new Vector3(cursor + BoardLayout.MeldStep * 0.5f,
-                                       TileAssets.Depth * 0.5f, ShowcaseZ),
-                           BoardLayout.LyingFaceUp);
-                cursor += BoardLayout.MeldStep;
-            }
-            return cursor;
         }
 
         // ------------------------------------------------------------

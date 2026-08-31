@@ -22,12 +22,12 @@ namespace Mahjong.View
 
     public class HandStrip : MonoBehaviour
     {
-        static readonly Vector2 TileSize = new Vector2(78f, 106f);
-        const float TileGap = 5f;
-        const float DrawnTileGap = 30f;    // 剛摸進來的那張跟其他牌隔開
-        const float SelectedLift = 22f;
-        const float ClaimLift = 11f;
-        const float FaceInset = 6f;
+        static readonly Vector2 TileSize = new Vector2(94f, 128f);
+        const float TileGap = 6f;
+        const float DrawnTileGap = 34f;    // 剛摸進來的那張跟其他牌隔開
+        const float SelectedLift = 26f;
+        const float ClaimLift = 13f;
+        const float FaceInset = 7f;
 
         static readonly Color BodyColor = new Color(0.955f, 0.945f, 0.905f);
         static readonly Color SelectedColor = new Color(1f, 0.90f, 0.62f);

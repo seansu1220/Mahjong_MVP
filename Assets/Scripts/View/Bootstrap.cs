@@ -45,6 +45,7 @@ namespace Mahjong.View
         TableBoard board;
         HandStrip handStrip;
         ActionButtons actionButtons;
+        WinningHandView winningHand;
         ResultView resultView;
         AnnouncementView announcement;
         Text statusLabel;
@@ -100,6 +101,7 @@ namespace Mahjong.View
             actionButtons.ActionHovered += OnHumanActionHovered;
 
             BuildReadyButton(canvas.transform);
+            winningHand = WinningHandView.Create(canvas.transform);
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
         }
@@ -133,7 +135,7 @@ namespace Mahjong.View
         {
             seatLabels = new Text[BoardLayout.SeatCount];
             seatLabels[0] = CreateSeatLabel(parent, "SeatBottom", new Vector2(1f, 0f),
-                                            new Vector2(-24f, 212f), TextAnchor.MiddleRight);
+                                            new Vector2(-24f, 240f), TextAnchor.MiddleRight);
             seatLabels[1] = CreateSeatLabel(parent, "SeatRight", new Vector2(1f, 0.5f),
                                             new Vector2(-24f, 300f), TextAnchor.MiddleRight);
             seatLabels[2] = CreateSeatLabel(parent, "SeatTop", new Vector2(0.5f, 1f),
@@ -155,7 +157,7 @@ namespace Mahjong.View
             statusLabel = UIFactory.CreateText("Status", parent, "", 24, StatusColor,
                                                TextAnchor.MiddleLeft);
             UIFactory.Anchor(statusLabel.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f),
-                             new Vector2(24f, 212f), new Vector2(400f, 34f));
+                             new Vector2(24f, 240f), new Vector2(380f, 34f));
 
             centreInfo = UIFactory.CreateText("CentreInfo", parent, "", 22, StatusColor);
             UIFactory.Anchor(centreInfo.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
@@ -172,13 +174,13 @@ namespace Mahjong.View
         /// <summary>宣告聽牌的按鈕，擺在動作按鈕列右側僅有的那段空位</summary>
         void BuildReadyButton(Transform parent)
         {
+            var size = new Vector2(120f, 76f);
             readyButton = UIFactory.CreateButton("Ready", parent,
                                                  UiFont.SupportsChinese ? "聽" : "Ready",
-                                                 new Vector2(100f, 60f),
-                                                 ReadyButtonColor, Color.white, DeclareReady);
+                                                 size, ReadyButtonColor, Color.white, DeclareReady);
             UIFactory.Anchor((RectTransform)readyButton.transform,
                              new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(555f, 206f), new Vector2(100f, 60f));
+                             new Vector2(600f, 224f), size);
             readyButton.gameObject.SetActive(false);
         }
 
@@ -206,7 +208,7 @@ namespace Mahjong.View
 
             board.RevealHands = false;
             board.WinnerSeat = -1;
-            board.HideWinningHand();
+            winningHand.Hide();
             resultView.Hide();
             RefreshAll();
 
@@ -563,9 +565,12 @@ namespace Mahjong.View
 
             board.RevealHands = true;
             board.WinnerSeat = result == null ? -1 : result.WinnerSeat;
-            if (result != null && result.EndReason == GameEndReason.Win)
-                board.ShowWinningHand(state.Players[result.WinnerSeat], result.WinningTile);
             RefreshAll();
+
+            // 贏家的牌用 2D 攤在畫面上方——結算是要讓玩家看清楚，
+            // 擺在桌上會被透視壓扁，也會跟桌上原有的牌疊在一起
+            if (result != null && result.EndReason == GameEndReason.Win)
+                winningHand.Show(state.Players[result.WinnerSeat], result.WinningTile);
 
             SetStatus(UiFont.SupportsChinese ? "全部攤牌" : "Hands revealed");
             yield return new WaitForSeconds(RevealPause);

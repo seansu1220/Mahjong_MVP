@@ -190,12 +190,6 @@ namespace Mahjong.View.Board
 
                 var material = CreateMaterial("TileFace" + tile, Color.white);
                 material.mainTexture = texture;
-
-                // 牌面朝向自己時整張牌是繞 Y 轉 180 度的，貼圖的 U 方向會落在畫面左邊，
-                // 字就左右顛倒了。這裡把貼圖水平翻回來，不動幾何。
-                material.mainTextureScale = new Vector2(-1f, 1f);
-                material.mainTextureOffset = new Vector2(1f, 0f);
-
                 faceMaterials[tile] = material;
             }
             baker.Dispose();
@@ -305,28 +299,51 @@ namespace Mahjong.View.Board
                 };
                 texture.ReadPixels(new Rect(0f, 0f, FaceTextureWidth, FaceTextureHeight), 0, 0);
 
-                // 先確認真的畫到東西了，再把貼圖釋放成不可讀
-                hasInk = HasVisibleInk(texture);
+                // 拍出來的字是左右相反的，直接在這裡翻正。
+                // 之前是在 3D 材質的 UV 上翻，但 2D 手牌用的是原始貼圖、吃不到那個翻轉，
+                // 結果 2D 還是顛倒的。翻在貼圖本身，兩邊就都正確。
+                hasInk = MirrorHorizontallyAndCheckInk(texture);
                 texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
 
                 RenderTexture.active = previous;
                 return texture;
             }
 
-            /// <summary>檢查貼圖上有沒有明顯比底色深的像素，也就是字有沒有畫出來</summary>
-            static bool HasVisibleInk(Texture2D texture)
+            /// <summary>
+            /// 把貼圖左右翻正，順便回報上面有沒有明顯比底色深的像素
+            /// （也就是字到底有沒有畫出來）。兩件事都要掃過整張圖，一起做省一次。
+            /// </summary>
+            static bool MirrorHorizontallyAndCheckInk(Texture2D texture)
             {
-                const int SampleStep = 4;
                 const float DarkEnough = 0.55f;
 
                 var pixels = texture.GetPixels32();
-                for (int i = 0; i < pixels.Length; i += SampleStep)
+                int width = texture.width;
+                bool hasInk = false;
+
+                for (int row = 0; row < texture.height; row++)
                 {
-                    var pixel = pixels[i];
-                    float brightness = (pixel.r + pixel.g + pixel.b) / (3f * 255f);
-                    if (brightness < DarkEnough) return true;
+                    int start = row * width;
+                    for (int column = 0; column < width / 2; column++)
+                    {
+                        int left = start + column;
+                        int right = start + width - 1 - column;
+                        var swap = pixels[left];
+                        pixels[left] = pixels[right];
+                        pixels[right] = swap;
+                    }
+
+                    if (hasInk) continue;
+                    for (int column = 0; column < width; column += 3)
+                    {
+                        var pixel = pixels[start + column];
+                        float brightness = (pixel.r + pixel.g + pixel.b) / (3f * 255f);
+                        if (brightness < DarkEnough) { hasInk = true; break; }
+                    }
                 }
-                return false;
+
+                texture.SetPixels32(pixels);
+                return hasInk;
             }
 
             void ApplyFace(int tile)

@@ -15,8 +15,8 @@ namespace Mahjong.View
 
     public class ActionButtons : MonoBehaviour
     {
-        static readonly Vector2 ButtonSize = new Vector2(132f, 60f);
-        const float ButtonGap = 12f;
+        static readonly Vector2 ButtonSize = new Vector2(162f, 76f);
+        const float ButtonGap = 14f;
 
         static readonly Color WinColor = new Color(0.78f, 0.22f, 0.20f);
         static readonly Color ClaimColor = new Color(0.20f, 0.42f, 0.68f);
@@ -39,7 +39,7 @@ namespace Mahjong.View
             // 釘在畫面底部、自己手牌的正上方。左邊是狀態提示、右邊是名牌，三者不重疊。
             var rect = UIFactory.CreateRect("ActionButtons", parent);
             UIFactory.Anchor(rect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 206f), new Vector2(1000f, ButtonSize.y));
+                             new Vector2(0f, 224f), new Vector2(1040f, ButtonSize.y));
 
             var view = rect.gameObject.AddComponent<ActionButtons>();
             view.Hide();
