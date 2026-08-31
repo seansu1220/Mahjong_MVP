@@ -97,18 +97,33 @@ AI 模擬一律用 `GameState.Clone()`，不得直接改動真實局面。
    `TileDef`、`WinChecker`、`Meld`、`Wall`、`HandPattern`、`SetInfo` 的簽章已固定並經過驗證。
    需要新功能請新增檔案或新增方法，不要改既有簽章。
 
-2. **UI 全部用程式碼建立，不依賴 Inspector**
-   場景裡只有一個掛著 `Bootstrap.cs` 的空物件。
-   所有 Canvas、Button、Text、Image 都用 `new GameObject()` 在程式中生成。
+2. **畫面全部用程式碼建立，不依賴 Inspector**
+   場景裡什麼都不用放——`Bootstrap` 以 `RuntimeInitializeOnLoadMethod` 自動啟動，
+   自己生出攝影機、燈光、3D 牌桌與 2D 介面。
+   所有 Canvas、Button、Text 與 3D 物件都用 `new GameObject()` 在程式中生成。
    不要要求使用者到 Unity 編輯器拖拉引用或建立 Prefab。
 
-3. **牌面用程式繪製，不使用外部圖片素材**
-   一張牌 = 白色圓角 Image + TextMeshPro 文字。
-   全部封裝在 `TileView.cs`，之後換美術素材只改這個檔案。
+3. **牌用 3D 物件，材質與貼圖全部程式生成，不使用外部圖片素材**
+   一張牌 = 縮放過的立方體（白色象牙牌身）+ 正反兩片面片（牌面／綠色牌背）。
+   全部封裝在 `Assets/Scripts/View/Board/`：
+   - `TileAssets.cs` 尺寸、共用材質、牌面貼圖
+   - `TileObject.cs` 單張牌
+   - `BoardLayout.cs` 世界座標配置
+   - `TableBoard.cs` 整張牌桌
+
+   **牌面貼圖在開場先烘焙**：Unity 內建的 3D 文字（`TextMesh`）用 GUI/Text Shader，
+   那支著色器寫死 `ZTest Always`，文字會穿透擋在前面的物件顯示。
+   所以開場用一台離屏攝影機把 42 種牌面各拍成一張貼圖，之後就是普通 3D 材質，深度排序正確。
+
    外部麻將牌素材多為 CC BY-SA 授權，商業營運有 share-alike 風險，一律不採用。
+
+   > 早期版本是用 uGUI 圖層疊出偽立體的 2D 牌，堆到後來仍不像實體牌，已於 2026-08-31 改為 3D。
 
 4. **WebGL 限制**
    不使用 `System.IO`、不使用多執行緒、不使用 `System.Net`。
+   另：材質是執行期用 `Shader.Find("Standard")` 建的，
+   **WebGL 建置前必須把 Standard 加入 Project Settings → Graphics → Always Included Shaders**，
+   否則著色器會被剝離，牌會變成紫色。
 
 5. **範圍控制（重要）**
    本階段是免費原型，時間上限 40 小時。

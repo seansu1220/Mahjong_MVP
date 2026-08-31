@@ -1,0 +1,136 @@
+using UnityEngine;
+
+namespace Mahjong.View.Board
+{
+    // ============================================================
+    // 牌桌的世界座標配置
+    //
+    // 先以「自己這一家」為基準把所有位置算在座位本地座標，
+    // 再依座位方位整個繞 Y 軸轉 90 度的倍數，四家就都排好了。
+    //
+    // 座位本地座標（自己在近端，面向 -Z）：
+    //   手牌   z = -2.42   立著，牌面朝 -Z（朝向自己與攝影機）
+    //   副露   z = -2.02   平躺攤開，牌面朝上
+    //   牌河   z = -1.40 起往桌心排，平躺，牌面朝上
+    //   牌山   離桌心 1.70，圍成方框
+    //
+    // 攝影機從自己身後上方俯視，所以近端的自己最大、對家因透視自然變小。
+    // ============================================================
+
+    public static class BoardLayout
+    {
+        public const int SeatCount = GameState.PlayerCount;
+
+        // ---- 各區塊離桌心多遠 ----
+        public const float HandDistance = 2.42f;
+        public const float MeldDistance = 2.02f;
+        public const float WallDistance = 1.70f;
+        public const float FirstDiscardRow = 1.40f;
+
+        // ---- 排列間距 ----
+        public const float HandStep = TileAssets.Width + 0.006f;
+        public const float MeldStep = TileAssets.Width + 0.004f;
+        public const float MeldGroupGap = 0.075f;
+        public const float DiscardStepX = TileAssets.Width + 0.008f;
+        public const float DiscardStepZ = TileAssets.Height + 0.020f;
+        public const float WallStep = TileAssets.Width + 0.004f;
+
+        public const int DiscardsPerRow = 8;
+        public const int WallStacksPerSide = 18;
+        public const int WallTilesPerStack = 2;
+
+        /// <summary>手牌與副露之間留的空隙</summary>
+        public const float HandToMeldGap = 0.09f;
+
+        // ---- 牌桌本體 ----
+        public const float TableSize = 5.8f;
+        public const float TableThickness = 0.16f;
+
+        // ---- 攝影機（想調整視角就改這三個值）----
+        public static readonly Vector3 CameraPosition = new Vector3(0f, 3.35f, -4.25f);
+        public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, -0.55f);
+        public const float CameraFieldOfView = 44f;
+
+        // ------------------------------------------------------------
+        // 基本朝向
+        // ------------------------------------------------------------
+
+        /// <summary>立著、牌面朝向自己（本地 -Z）</summary>
+        public static readonly Quaternion StandingFacingOwner =
+            Quaternion.LookRotation(Vector3.back, Vector3.up);
+
+        /// <summary>平躺、牌面朝上，字的上方朝向桌心（本地 +Z）</summary>
+        public static readonly Quaternion LyingFaceUp =
+            Quaternion.LookRotation(Vector3.up, Vector3.forward);
+
+        /// <summary>平躺、牌面朝下（牌山用）</summary>
+        public static readonly Quaternion LyingFaceDown =
+            Quaternion.LookRotation(Vector3.down, Vector3.forward);
+
+        /// <summary>某個方位的整體旋轉。0 是自己（近端），之後逆時針。</summary>
+        public static Quaternion SeatRotation(int displayIndex)
+            => Quaternion.AngleAxis(90f * displayIndex, Vector3.up);
+
+        /// <summary>把座位本地的擺放換算成世界座標</summary>
+        public static void ToWorld(int displayIndex, Vector3 localPosition, Quaternion localRotation,
+                                   out Vector3 position, out Quaternion rotation)
+        {
+            var seat = SeatRotation(displayIndex);
+            position = seat * localPosition;
+            rotation = seat * localRotation;
+        }
+
+        // ------------------------------------------------------------
+        // 各區塊的座位本地座標
+        // ------------------------------------------------------------
+
+        /// <summary>
+        /// 手牌與副露排在同一列：手牌在左、副露接在右邊，整列置中。
+        /// 每吃碰一組手牌就少三張，所以整列寬度大致不變，跟真的打牌一樣。
+        /// </summary>
+        public static float HandRowStartX(int handCount, float meldsWidth)
+        {
+            float handWidth = handCount * HandStep;
+            float total = handWidth + (meldsWidth > 0f ? HandToMeldGap + meldsWidth : 0f);
+            return -total * 0.5f;
+        }
+
+        public static Vector3 HandSlot(float x)
+            => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
+
+        public static Vector3 MeldSlot(float x)
+            => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);
+
+        public static Vector3 DiscardSlot(int index)
+        {
+            int column = index % DiscardsPerRow;
+            int row = index / DiscardsPerRow;
+            float x = (column - (DiscardsPerRow - 1) * 0.5f) * DiscardStepX;
+            float z = -FirstDiscardRow + row * DiscardStepZ;
+            return new Vector3(x, TileAssets.Depth * 0.5f, z);
+        }
+
+        // ------------------------------------------------------------
+        // 牌山：四邊圍成方框，順序與出牌方向一致（逆時針）
+        // ------------------------------------------------------------
+
+        public static int TotalWallStacks => WallStacksPerSide * SeatCount;
+
+        /// <summary>第 stackIndex 墩、第 layer 層的位置與朝向</summary>
+        public static void WallStack(int stackIndex, int layer,
+                                     out Vector3 position, out Quaternion rotation)
+        {
+            int side = Mathf.Clamp(stackIndex / WallStacksPerSide, 0, SeatCount - 1);
+            int withinSide = stackIndex - side * WallStacksPerSide;
+
+            float extent = (WallStacksPerSide - 1) * WallStep * 0.5f;
+            float along = -extent + withinSide * WallStep;
+
+            // 每一邊都沿著自己的本地 X 排，再整段轉到該邊，接起來就是連續的方框
+            var localPosition = new Vector3(along,
+                                            TileAssets.Depth * (0.5f + layer),
+                                            -WallDistance);
+            ToWorld(side, localPosition, LyingFaceDown, out position, out rotation);
+        }
+    }
+}

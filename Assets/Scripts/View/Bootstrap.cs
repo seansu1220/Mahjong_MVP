@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Mahjong.View.Board;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -9,12 +10,14 @@ namespace Mahjong.View
     // ============================================================
     // 進入點
     //
-    // 場景裡不需要放任何東西：這支程式會在進入 Play 時自己生出
-    // Canvas、EventSystem 與所有畫面元件，也不需要到 Inspector 拖拉引用。
+    // 場景裡不需要放任何東西：進入 Play 時自己生出 3D 牌桌、攝影機、
+    // 燈光，以及疊在上面的 2D 介面，也不需要到 Inspector 拖拉引用。
     //
-    // 職責只有兩件事：
-    //   1. 組出畫面
-    //   2. 驅動 TurnEngine 的主迴圈，把玩家點擊與 AI 決策餵給它
+    // 畫面分兩層：
+    //   3D  牌桌本身——牌山、四家手牌、副露、牌河（TableBoard）
+    //   2D  疊在上面的介面——動作按鈕、名牌、狀態、大字、結算視窗
+    //
+    // 職責只有兩件事：組出畫面、驅動 TurnEngine 的主迴圈。
     // 所有規則判定都在 Core，這裡一條規則都不寫。
     // ============================================================
 
@@ -22,39 +25,37 @@ namespace Mahjong.View
     {
         public const int HumanSeat = 0;
 
-        static readonly Color TableColor = new Color(0.07f, 0.26f, 0.19f);
-        static readonly Color TableRim = new Color(0.05f, 0.18f, 0.13f);
         static readonly Color HintColor = new Color(0.55f, 0.62f, 0.57f);
         static readonly Color StatusColor = new Color(0.86f, 0.90f, 0.84f);
+        static readonly Color SeatColor = new Color(0.88f, 0.91f, 0.86f);
+        static readonly Color ActiveSeatColor = new Color(1f, 0.85f, 0.35f);
+        static readonly Color WinnerSeatColor = new Color(1f, 0.55f, 0.40f);
         static readonly Color ReadyColor = new Color(1f, 0.78f, 0.30f);
         static readonly Color ReadyButtonColor = new Color(0.72f, 0.45f, 0.10f);
 
-        const float AiThinkDelay = 0.30f;
-        const float DrawFlightDuration = 0.5f;
-        const float RevealPause = 1.1f;      // 攤牌後先讓玩家看一眼再蓋上結算視窗
-
-        WinningHandView winningHand;
+        const float AiThinkDelay = 0.32f;
+        const float DrawPause = 0.24f;
+        const float RevealPause = 1.2f;
 
         GameState state;
         TurnEngine engine;
         FanTable fanTable;
         AIPlayer[] opponents;
 
-        TableView tableView;
-        HandView handView;
+        TableBoard board;
         ActionButtons actionButtons;
         ResultView resultView;
         AnnouncementView announcement;
-        DealAnimation dealAnimation;
         Text statusLabel;
+        Text centreInfo;
+        Text[] seatLabels;
+        Button readyButton;
 
         GameAction pendingHumanAction;
         List<GameAction> humanTurnOptions;
-
-        Button readyButton;
         bool humanDeclaredReady;
         bool readyAnnounced;
-        int lastDrawnTile = TileView.NoTile;
+        int lastDrawnTile = TileObject.NoTile;
         int dealerIndex;
         int dealerStreak;
 
@@ -82,75 +83,27 @@ namespace Mahjong.View
         void BuildScene()
         {
             EnsureEventSystem();
-            var canvas = CreateCanvas();
-            BuildBackground(canvas.transform);
 
-            tableView = TableView.Create(canvas.transform, HumanSeat);
+            board = TableBoard.Create(HumanSeat);
+            board.TileChosen += OnHumanTileChosen;
 
-            handView = HandView.Create(canvas.transform);
-            handView.TileChosen += OnHumanTileChosen;
+            var canvas = CreateOverlayCanvas();
+            BuildSeatLabels(canvas.transform);
+            BuildStatusLabels(canvas.transform);
 
             actionButtons = ActionButtons.Create(canvas.transform);
             actionButtons.ActionChosen += OnHumanActionChosen;
             actionButtons.ActionHovered += OnHumanActionHovered;
 
-            winningHand = WinningHandView.Create(canvas.transform);
+            BuildReadyButton(canvas.transform);
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
-            dealAnimation = DealAnimation.Create(canvas.transform);
-
-            BuildStatusLabels(canvas.transform);
-            BuildReadyButton(canvas.transform);
         }
 
-        /// <summary>
-        /// 宣告聽牌用的按鈕。放在動作按鈕列右側僅有的那段空位，
-        /// 只有「打掉剛摸的那張之後仍然聽牌」時才會出現。
-        /// </summary>
-        void BuildReadyButton(Transform parent)
+        /// <summary>2D 介面疊在 3D 牌桌上方，用螢幕座標，不受攝影機角度影響。</summary>
+        static Canvas CreateOverlayCanvas()
         {
-            readyButton = UIFactory.CreateButton("Ready", parent,
-                                                 UiFont.SupportsChinese ? "聽" : "Ready",
-                                                 new Vector2(100f, 60f),
-                                                 ReadyButtonColor, Color.white,
-                                                 DeclareReady);
-            UIFactory.Anchor((RectTransform)readyButton.transform,
-                             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(555f, 206f), new Vector2(100f, 60f));
-            readyButton.gameObject.SetActive(false);
-        }
-
-        void BuildBackground(Transform parent)
-        {
-            var backdrop = UIFactory.CreateImage("Backdrop", parent, TableRim, rounded: false);
-            UIFactory.Stretch(backdrop.rectTransform);
-
-            // 中央鋪一塊比較亮的桌布，讓四邊自然收深，看起來像張真的牌桌
-            var felt = UIFactory.CreateImage("Felt", parent, TableColor);
-            UIFactory.Anchor(felt.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             Vector2.zero, new Vector2(1560f, 900f));
-        }
-
-        void BuildStatusLabels(Transform parent)
-        {
-            // 原本擺在畫面中央上方，正好壓在牌山上排（y +234..+266）。
-            // 改釘到左下角、自己手牌的正上方——提示是給玩家看的，離手邊最近最好讀，
-            // 而且跟右下角的名牌、中間的動作按鈕左右分開，三者互不遮擋。
-            statusLabel = UIFactory.CreateText("Status", parent, "", 24, StatusColor,
-                                               TextAnchor.MiddleLeft);
-            UIFactory.Anchor(statusLabel.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f),
-                             new Vector2(24f, 212f), new Vector2(400f, 34f));
-
-            var fontNotice = UIFactory.CreateText("FontNotice", parent,
-                                                  "字型：" + UiFont.SourceDescription, 17, HintColor,
-                                                  TextAnchor.UpperLeft);
-            UIFactory.Anchor(fontNotice.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                             new Vector2(14f, -10f), new Vector2(760f, 24f));
-        }
-
-        static Canvas CreateCanvas()
-        {
-            var go = new GameObject("MahjongCanvas", typeof(Canvas), typeof(CanvasScaler),
+            var go = new GameObject("OverlayCanvas", typeof(Canvas), typeof(CanvasScaler),
                                     typeof(GraphicRaycaster));
             var canvas = go.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -160,9 +113,7 @@ namespace Mahjong.View
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
 
-            // 鎖定高度：畫布的邏輯高度永遠是 1080，只有寬度隨畫面比例變化。
-            // 先前設 0.5 會同時參考寬高，畫面比 16:9 寬時邏輯高度會縮到 1080 以下，
-            // 釘在上方的對家名牌就被擠出可視範圍了。
+            // 鎖定高度，畫面比 16:9 寬時上下的元件才不會被擠出可視範圍
             scaler.matchWidthOrHeight = 1f;
             return canvas;
         }
@@ -171,6 +122,60 @@ namespace Mahjong.View
         {
             if (FindObjectOfType<EventSystem>() != null) return;
             new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        }
+
+        /// <summary>四家的名牌釘在畫面對應的那一邊，順序為自己、右、上、左。</summary>
+        void BuildSeatLabels(Transform parent)
+        {
+            seatLabels = new Text[BoardLayout.SeatCount];
+            seatLabels[0] = CreateSeatLabel(parent, "SeatBottom", new Vector2(1f, 0f),
+                                            new Vector2(-24f, 212f), TextAnchor.MiddleRight);
+            seatLabels[1] = CreateSeatLabel(parent, "SeatRight", new Vector2(1f, 0.5f),
+                                            new Vector2(-24f, 300f), TextAnchor.MiddleRight);
+            seatLabels[2] = CreateSeatLabel(parent, "SeatTop", new Vector2(0.5f, 1f),
+                                            new Vector2(0f, -28f), TextAnchor.MiddleCenter);
+            seatLabels[3] = CreateSeatLabel(parent, "SeatLeft", new Vector2(0f, 0.5f),
+                                            new Vector2(24f, 300f), TextAnchor.MiddleLeft);
+        }
+
+        static Text CreateSeatLabel(Transform parent, string name, Vector2 anchor,
+                                    Vector2 offset, TextAnchor alignment)
+        {
+            var label = UIFactory.CreateText(name, parent, "", 26, SeatColor, alignment);
+            UIFactory.Anchor(label.rectTransform, anchor, anchor, offset, new Vector2(360f, 34f));
+            return label;
+        }
+
+        void BuildStatusLabels(Transform parent)
+        {
+            statusLabel = UIFactory.CreateText("Status", parent, "", 24, StatusColor,
+                                               TextAnchor.MiddleLeft);
+            UIFactory.Anchor(statusLabel.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f),
+                             new Vector2(24f, 212f), new Vector2(400f, 34f));
+
+            centreInfo = UIFactory.CreateText("CentreInfo", parent, "", 22, StatusColor);
+            UIFactory.Anchor(centreInfo.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                             new Vector2(24f, -46f), new Vector2(360f, 84f));
+            centreInfo.alignment = TextAnchor.UpperLeft;
+
+            var fontNotice = UIFactory.CreateText("FontNotice", parent,
+                                                  "字型：" + UiFont.SourceDescription, 17, HintColor,
+                                                  TextAnchor.UpperLeft);
+            UIFactory.Anchor(fontNotice.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                             new Vector2(24f, -14f), new Vector2(760f, 24f));
+        }
+
+        /// <summary>宣告聽牌的按鈕，擺在動作按鈕列右側僅有的那段空位</summary>
+        void BuildReadyButton(Transform parent)
+        {
+            readyButton = UIFactory.CreateButton("Ready", parent,
+                                                 UiFont.SupportsChinese ? "聽" : "Ready",
+                                                 new Vector2(100f, 60f),
+                                                 ReadyButtonColor, Color.white, DeclareReady);
+            UIFactory.Anchor((RectTransform)readyButton.transform,
+                             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                             new Vector2(555f, 206f), new Vector2(100f, 60f));
+            readyButton.gameObject.SetActive(false);
         }
 
         // ------------------------------------------------------------
@@ -188,49 +193,69 @@ namespace Mahjong.View
             for (int seat = 0; seat < GameState.PlayerCount; seat++)
                 if (seat != HumanSeat) opponents[seat] = new AIPlayer(seat, state.Wall.Seed + seat);
 
-            lastDrawnTile = TileView.NoTile;
+            lastDrawnTile = TileObject.NoTile;
             pendingHumanAction = null;
             humanTurnOptions = null;
             humanDeclaredReady = false;
             readyAnnounced = false;
             readyButton.gameObject.SetActive(false);
-            tableView.RevealHands = false;
-            tableView.WinnerSeat = -1;
-            winningHand.Hide();
+
+            board.RevealHands = false;
+            board.WinnerSeat = -1;
+            board.HideWinningHand();
             resultView.Hide();
-
-            yield return PlayDealAnimation();
-
             RefreshAll();
-            yield return PlayHand();
-        }
-
-        /// <summary>開局的洗牌發牌演出。牌局本身已經發好，這裡純粹是給玩家看的。</summary>
-        IEnumerator PlayDealAnimation()
-        {
-            tableView.gameObject.SetActive(false);
-            handView.gameObject.SetActive(false);
-            actionButtons.Hide();
-
-            SetStatus(UiFont.SupportsChinese ? "洗牌中…" : "Shuffling...");
-            yield return dealAnimation.Play(TableView.SeatAnchors, state.Wall.Seed);
-
-            tableView.gameObject.SetActive(true);
-            handView.gameObject.SetActive(true);
-            SetStatus("");
 
             string dealerText = UiFont.SupportsChinese
                 ? (dealerIndex == HumanSeat ? "你坐莊" : "本局莊家：" + SeatName(dealerIndex))
                 : (dealerIndex == HumanSeat ? "You are the dealer" : "Dealer: seat " + dealerIndex);
             yield return announcement.Play(UiFont.SupportsChinese ? "開局" : "Start",
                                            dealerText, AnnouncementView.NeutralColor);
+
+            yield return PlayHand();
         }
 
         void RefreshAll()
         {
-            tableView.Refresh(state);
-            handView.Refresh(state.Players[HumanSeat],
-                             state.CurrentPlayer == HumanSeat ? lastDrawnTile : TileView.NoTile);
+            board.Refresh(state);
+            RefreshLabels();
+        }
+
+        void RefreshLabels()
+        {
+            bool chinese = UiFont.SupportsChinese;
+
+            for (int offset = 0; offset < BoardLayout.SeatCount; offset++)
+            {
+                int seat = (HumanSeat + offset) % BoardLayout.SeatCount;
+                var player = state.Players[seat];
+                bool isTurn = state.CurrentPlayer == seat && state.Phase != GamePhase.Ended;
+
+                var label = seatLabels[offset];
+                label.text = BuildSeatText(player, seat, chinese);
+                label.color = seat == board.WinnerSeat ? WinnerSeatColor
+                            : (isTurn ? ActiveSeatColor : SeatColor);
+                label.fontStyle = (isTurn || seat == board.WinnerSeat)
+                    ? FontStyle.Bold : FontStyle.Normal;
+            }
+
+            int remaining = state.Wall == null ? 0 : state.Wall.Remaining;
+            centreInfo.text = chinese
+                ? string.Format("{0}風圈\n剩 {1} 張{2}",
+                    TileDef.Name(state.RoundWind), remaining,
+                    state.DealerStreak > 0 ? "\n莊家連 " + state.DealerStreak : "")
+                : string.Format("{0} round\n{1} tiles left", state.RoundWind, remaining);
+        }
+
+        string BuildSeatText(PlayerState player, int seat, bool chinese)
+        {
+            string wind = chinese ? TileDef.Name(player.SeatWind) + "家" : "Seat " + seat;
+            string dealer = seat == dealerIndex ? (chinese ? "・莊" : " (D)") : "";
+            string you = seat == HumanSeat ? (chinese ? "・你" : " YOU") : "";
+            string flowers = player.Flowers.Count > 0
+                ? (chinese ? "・花" : " F") + player.Flowers.Count : "";
+            string winner = seat == board.WinnerSeat ? (chinese ? "　胡牌！" : "  WIN!") : "";
+            return wind + dealer + you + flowers + winner;
         }
 
         void SetStatus(string message) => statusLabel.text = message ?? "";
@@ -247,16 +272,11 @@ namespace Mahjong.View
             {
                 if (state.Phase == GamePhase.WaitingDraw)
                 {
-                    // 位置要在摸之前先記下來，摸完那一墩就從牌山上消失了
-                    var wallPosition = tableView.NextDrawPosition;
-                    int drawingSeat = state.CurrentPlayer;
-
                     var result = engine.DrawForCurrentPlayer();
                     lastDrawnTile = result.DrawnTile;
                     if (result.EndReason != GameEndReason.None) finalResult = result;
                     RefreshAll();
-
-                    yield return AnimateTileToSeat(wallPosition, drawingSeat);
+                    yield return new WaitForSeconds(DrawPause);
                 }
                 else if (state.Phase == GamePhase.WaitingDiscard)
                 {
@@ -288,26 +308,27 @@ namespace Mahjong.View
             else
             {
                 SetStatus(UiFont.SupportsChinese
-                    ? SeatName(seat) + " 思考中…"
-                    : "Seat " + seat + " thinking...");
+                    ? SeatName(seat) + " 思考中…" : "Seat " + seat + " thinking...");
                 yield return new WaitForSeconds(AiThinkDelay);
                 chosen = opponents[seat].ChooseTurnAction(state, engine.GetTurnActions(seat));
             }
 
             if (chosen == null) yield break;
 
-            // 槓完要從牌尾補牌，先記下牌尾位置才能演出「從另一端補牌」
-            bool isKan = chosen.Type == ActionType.AnKan || chosen.Type == ActionType.AddKan;
-            var replacementPosition = tableView.NextReplacementPosition;
-
             bool announceReady = seat == HumanSeat && humanDeclaredReady && !readyAnnounced;
-
             var result = engine.ApplyTurnAction(chosen);
             if (!result.Success)
             {
                 SetStatus(result.Error);
                 yield break;
             }
+
+            lastDrawnTile = result.DrawnTile != GameState.NoTile
+                ? result.DrawnTile : TileObject.NoTile;
+            if (result.EndReason != GameEndReason.None) reportEnd(result);
+
+            SetStatus("");
+            RefreshAll();
 
             if (announceReady)
             {
@@ -316,30 +337,12 @@ namespace Mahjong.View
                                                UiFont.SupportsChinese ? "牌型已固定" : "Hand locked",
                                                ReadyColor);
             }
-
-            // 槓完會補一張，補進來的那張要標示出來；打牌則清掉標示
-            lastDrawnTile = result.DrawnTile != GameState.NoTile ? result.DrawnTile : TileView.NoTile;
-            if (result.EndReason != GameEndReason.None) reportEnd(result);
-
-            SetStatus("");
-            RefreshAll();
             yield return AnnounceIfNeeded(chosen);
-
-            if (isKan && result.DrawnTile != GameState.NoTile)
-                yield return AnimateTileToSeat(replacementPosition, seat);
-        }
-
-        /// <summary>演出「牌從牌山某一端飛到某家手上」，讓玩家看得出是正常摸還是補牌。</summary>
-        IEnumerator AnimateTileToSeat(Vector2 from, int seat)
-        {
-            var target = TableView.SeatAnchors[tableView.DisplayIndexOf(seat)];
-            yield return dealAnimation.FlyTile(from, target, DrawFlightDuration);
         }
 
         IEnumerator RunClaimPhase(System.Action<TurnResult> reportEnd)
         {
             var declarations = CollectAiDeclarations();
-
             var humanOptions = engine.GetClaimActions(HumanSeat);
 
             // 宣告聽牌之後不再吃碰槓，只有能胡才出手
@@ -366,7 +369,8 @@ namespace Mahjong.View
                 yield break;
             }
 
-            lastDrawnTile = result.DrawnTile != GameState.NoTile ? result.DrawnTile : TileView.NoTile;
+            lastDrawnTile = result.DrawnTile != GameState.NoTile
+                ? result.DrawnTile : TileObject.NoTile;
             if (result.EndReason != GameEndReason.None) reportEnd(result);
 
             RefreshAll();
@@ -393,7 +397,7 @@ namespace Mahjong.View
         }
 
         // ------------------------------------------------------------
-        // 中央大字提示
+        // 中央大字
         // ------------------------------------------------------------
 
         IEnumerator AnnounceIfNeeded(GameAction action)
@@ -404,9 +408,7 @@ namespace Mahjong.View
             if (headline == null) yield break;
 
             var color = action.Type == ActionType.Win
-                ? AnnouncementView.WinColor
-                : AnnouncementView.ClaimColor;
-
+                ? AnnouncementView.WinColor : AnnouncementView.ClaimColor;
             yield return announcement.Play(headline, SeatName(action.SeatIndex), color);
         }
 
@@ -423,7 +425,7 @@ namespace Mahjong.View
                 case ActionType.Win:
                     if (chinese) return selfDraw ? "自摸" : "胡";
                     return selfDraw ? "TSUMO" : "WIN";
-                default: return null;   // 出牌與過牌不需要大字
+                default: return null;
             }
         }
 
@@ -436,7 +438,7 @@ namespace Mahjong.View
             pendingHumanAction = null;
             humanTurnOptions = engine.GetTurnActions(HumanSeat);
 
-            // 宣告聽牌之後牌型就固定了，摸到什麼打什麼，只有能胡才停下來
+            // 宣告聽牌之後牌型固定，摸到什麼打什麼，只有能胡才停下來
             if (humanDeclaredReady)
             {
                 pendingHumanAction = AutoPlayAction();
@@ -446,27 +448,40 @@ namespace Mahjong.View
                     yield return new WaitForSeconds(AiThinkDelay);
                     yield break;
                 }
-                // 理論上不會發生；真的找不到動作就退回手動，不要卡住牌局
-                humanDeclaredReady = false;
+                humanDeclaredReady = false;   // 理論上不會發生，退回手動免得卡住
             }
 
             SetStatus(UiFont.SupportsChinese ? "輪到你出牌（點兩下打出）" : "Your turn: tap twice");
             actionButtons.Show(humanTurnOptions);
             readyButton.gameObject.SetActive(CanDeclareReadyNow());
-            handView.SetInteractable(true);
+            board.SetHandInteractable(true);
 
             while (pendingHumanAction == null) yield return null;
 
-            handView.SetInteractable(false);
+            board.SetHandInteractable(false);
             actionButtons.Hide();
             readyButton.gameObject.SetActive(false);
             SetStatus("");
         }
 
-        /// <summary>剛摸的那張打掉之後仍然聽牌，才讓玩家宣告</summary>
+        IEnumerator WaitForHumanClaim(List<GameAction> options)
+        {
+            pendingHumanAction = null;
+            humanTurnOptions = null;
+
+            SetStatus(UiFont.SupportsChinese ? "要不要叫牌？滑按鈕看用掉哪幾張" : "Claim it?");
+            actionButtons.Show(options);
+
+            while (pendingHumanAction == null) yield return null;
+
+            actionButtons.Hide();
+            board.ClearClaimHighlight();
+            SetStatus("");
+        }
+
         bool CanDeclareReadyNow()
             => !humanDeclaredReady
-               && lastDrawnTile != TileView.NoTile
+               && lastDrawnTile != TileObject.NoTile
                && engine.IsReadyAfterDiscarding(HumanSeat, lastDrawnTile);
 
         void DeclareReady()
@@ -476,7 +491,6 @@ namespace Mahjong.View
             pendingHumanAction = FindDiscardAction(lastDrawnTile);
         }
 
-        /// <summary>宣告聽牌後的自動決策：能胡就胡，否則打掉剛摸的那張。</summary>
         GameAction AutoPlayAction()
         {
             foreach (var option in humanTurnOptions)
@@ -498,47 +512,18 @@ namespace Mahjong.View
             return null;
         }
 
-        IEnumerator WaitForHumanClaim(List<GameAction> options)
-        {
-            pendingHumanAction = null;
-            humanTurnOptions = null;
-
-            SetStatus(UiFont.SupportsChinese ? "要不要叫牌？滑按鈕看用掉哪幾張" : "Claim it?");
-            actionButtons.Show(options);
-
-            while (pendingHumanAction == null) yield return null;
-
-            actionButtons.Hide();
-            handView.ClearClaimHighlight();
-            SetStatus("");
-        }
-
         void OnHumanTileChosen(int tile)
         {
-            if (humanTurnOptions == null) return;
-            foreach (var option in humanTurnOptions)
-                if (option.Type == ActionType.Discard && option.Tile == tile)
-                {
-                    pendingHumanAction = option;
-                    return;
-                }
+            var action = FindDiscardAction(tile);
+            if (action != null) pendingHumanAction = action;
         }
 
         void OnHumanActionChosen(GameAction action) => pendingHumanAction = action;
 
-        // ------------------------------------------------------------
-        // 叫牌提示：標出手上會被拿去湊的牌
-        // ------------------------------------------------------------
-
-        /// <summary>
-        /// 只有滑鼠移到某個叫牌按鈕上時才標出那一組會用掉的牌，移開就清掉。
-        /// 吃可能有好幾種組法（例如手上 1245 條要吃 3 條，可組 123／234／345），
-        /// 一次全標會把四張都標亮反而看不出差別，所以一次只標一組。
-        /// </summary>
+        /// <summary>只有滑鼠移到某個叫牌按鈕上時才標出那一組會用掉的牌，移開就清掉。</summary>
         void OnHumanActionHovered(GameAction action)
-            => handView.SetClaimHighlight(TilesUsedBy(action));
+            => board.SetClaimHighlight(TilesUsedBy(action));
 
-        /// <summary>某個叫牌動作會從手上拿走哪幾張。胡牌用到整副手牌，不特別標。</summary>
         static int[] TilesUsedBy(GameAction action)
         {
             if (action == null) return null;
@@ -546,14 +531,8 @@ namespace Mahjong.View
 
             switch (action.Type)
             {
-                case ActionType.Pon:
-                    used[action.Tile] = 2;
-                    return used;
-
-                case ActionType.MinKan:
-                    used[action.Tile] = 3;
-                    return used;
-
+                case ActionType.Pon: used[action.Tile] = 2; return used;
+                case ActionType.MinKan: used[action.Tile] = 3; return used;
                 case ActionType.Chi:
                     for (int offset = 0; offset < 3; offset++)
                     {
@@ -561,8 +540,7 @@ namespace Mahjong.View
                         if (tile != action.Tile) used[tile]++;
                     }
                     return used;
-
-                default: return null;   // 胡、槓（自己回合）與過牌不需要標
+                default: return null;
             }
         }
 
@@ -572,22 +550,18 @@ namespace Mahjong.View
 
         IEnumerator ShowResult(TurnResult result)
         {
-            handView.SetInteractable(false);
+            board.SetHandInteractable(false);
+            board.ClearClaimHighlight();
             actionButtons.Hide();
             readyButton.gameObject.SetActive(false);
-            handView.ClearClaimHighlight();
-            SetStatus("");
 
-            // 三家的手牌翻開，才看得到贏家到底做了什麼牌
-            tableView.RevealHands = true;
-            tableView.WinnerSeat = result == null ? -1 : result.WinnerSeat;
+            board.RevealHands = true;
+            board.WinnerSeat = result == null ? -1 : result.WinnerSeat;
+            if (result != null && result.EndReason == GameEndReason.Win)
+                board.ShowWinningHand(state.Players[result.WinnerSeat], result.WinningTile);
             RefreshAll();
 
             SetStatus(UiFont.SupportsChinese ? "全部攤牌" : "Hands revealed");
-
-            if (result != null && result.EndReason == GameEndReason.Win)
-                winningHand.Show(state.Players[result.WinnerSeat], result.WinningTile);
-
             yield return new WaitForSeconds(RevealPause);
             SetStatus("");
 
