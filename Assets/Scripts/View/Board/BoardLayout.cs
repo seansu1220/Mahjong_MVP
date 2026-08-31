@@ -44,11 +44,13 @@ namespace Mahjong.View.Board
         /// <summary>手牌與副露之間留的空隙</summary>
         public const float HandToMeldGap = 0.09f;
 
-        /// <summary>選取的牌抬起來的位移：往上再往自己這邊挪一點</summary>
-        public static readonly Vector3 SelectedLift = new Vector3(0f, 0.055f, -0.060f);
+        // 純粹往上抬。原本還往自己這邊挪，但攝影機是俯視的，
+        // 往自己挪在畫面上看起來就是「往下移」，反而不像被拿起來。
+        /// <summary>選取的牌抬起來的高度</summary>
+        public static readonly Vector3 SelectedLift = new Vector3(0f, 0.14f, 0f);
 
         /// <summary>叫牌提示抬得比選取淺一些</summary>
-        public static readonly Vector3 ClaimLift = new Vector3(0f, 0.030f, -0.030f);
+        public static readonly Vector3 ClaimLift = new Vector3(0f, 0.07f, 0f);
 
         // ---- 牌桌本體 ----
         public const float TableSize = 5.8f;

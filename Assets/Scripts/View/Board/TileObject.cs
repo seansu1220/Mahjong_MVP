@@ -5,10 +5,14 @@ namespace Mahjong.View.Board
     // ============================================================
     // 一張 3D 麻將牌
     //
-    // 結構就是實體牌的結構：
-    //   Body  白色象牙牌身，是一個縮放過的立方體，也負責接點擊
-    //   Face  牌面，貼在牌身正面（本地 +Z）前方一點點
+    // 結構就是實體牌的結構，三個零件都掛在一個「沒有縮放」的空物件底下：
+    //   Body  白色象牙牌身，一個縮放成牌形的立方體
+    //   Face  牌面，貼在牌身正面（本地 +Z）外側一點點
     //   Back  牌背，貼在牌身背面（本地 -Z），綠色
+    //
+    // 零件不掛在立方體底下，是因為立方體是非等比縮放的，
+    // 子物件的座標與尺寸都得反推換算，很容易算錯也難查。
+    // 掛在未縮放的根物件上，所有數字就都是實際的世界尺寸。
     //
     // 牌身比牌面大一圈，所以不論從哪個角度看，
     // 牌面與牌背四周都會露出白色的牌身——這就是實體牌的樣子。
@@ -22,12 +26,14 @@ namespace Mahjong.View.Board
 
         /// <summary>牌面與牌背比牌身小的比例，露出來的白邊就是牌身</summary>
         const float PanelInset = 0.86f;
-        const float PanelOffset = 0.512f;   // 略大於 0.5，讓面板浮在牌身表面前方
+
+        /// <summary>面板浮出牌身表面的距離，避免與牌身共面閃爍</summary>
+        const float PanelLift = 0.0015f;
 
         static readonly Color NormalTint = Color.white;
-        static readonly Color SelectedTint = new Color(1f, 0.86f, 0.52f);
-        static readonly Color ClaimTint = new Color(0.62f, 0.84f, 1f);
-        static readonly Color DimTint = new Color(0.72f, 0.72f, 0.70f);
+        static readonly Color SelectedTint = new Color(1f, 0.88f, 0.60f);
+        static readonly Color ClaimTint = new Color(0.66f, 0.86f, 1f);
+        static readonly Color DimTint = new Color(0.74f, 0.74f, 0.72f);
 
         MeshRenderer bodyRenderer;
         MeshRenderer faceRenderer;
@@ -51,40 +57,56 @@ namespace Mahjong.View.Board
 
         public static TileObject Create(Transform parent)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = "Tile";
-            body.transform.SetParent(parent, worldPositionStays: false);
-            body.transform.localScale = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
+            var root = new GameObject("Tile");
+            root.transform.SetParent(parent, worldPositionStays: false);
 
-            var view = body.AddComponent<TileObject>();
-            view.Build(body);
+            var view = root.AddComponent<TileObject>();
+            view.Build();
             return view;
         }
 
-        void Build(GameObject body)
+        void Build()
         {
-            bodyRenderer = body.GetComponent<MeshRenderer>();
-            bodyRenderer.sharedMaterial = TileAssets.BodyMaterial;
-            bodyRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var collider = gameObject.AddComponent<BoxCollider>();
+            collider.size = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
 
-            faceRenderer = CreatePanel("Face", new Vector3(0f, 0f, PanelOffset), 0f);
-            backRenderer = CreatePanel("Back", new Vector3(0f, 0f, -PanelOffset), 180f);
+            bodyRenderer = CreateBody();
+            faceRenderer = CreatePanel("Face", TileAssets.Depth * 0.5f + PanelLift, 0f);
+            backRenderer = CreatePanel("Back", -(TileAssets.Depth * 0.5f + PanelLift), 180f);
             backRenderer.sharedMaterial = TileAssets.BackMaterial;
 
             tintBlock = new MaterialPropertyBlock();
+            ApplyTint(NormalTint);
         }
 
-        /// <summary>牌面／牌背都是一片薄薄的面片，貼在牌身表面前方</summary>
-        MeshRenderer CreatePanel(string name, Vector3 localPosition, float yaw)
+        MeshRenderer CreateBody()
+        {
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "Body";
+            Destroy(body.GetComponent<Collider>());   // 點擊由根物件的 BoxCollider 負責
+
+            body.transform.SetParent(transform, worldPositionStays: false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localRotation = Quaternion.identity;
+            body.transform.localScale = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
+
+            var renderer = body.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = TileAssets.BodyMaterial;
+            return renderer;
+        }
+
+        /// <summary>牌面／牌背都是一片薄薄的面片，浮在牌身表面外側</summary>
+        MeshRenderer CreatePanel(string name, float z, float yaw)
         {
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             quad.name = name;
-            Destroy(quad.GetComponent<Collider>());   // 點擊只由牌身負責
+            Destroy(quad.GetComponent<Collider>());
 
             quad.transform.SetParent(transform, worldPositionStays: false);
-            quad.transform.localPosition = localPosition;
+            quad.transform.localPosition = new Vector3(0f, 0f, z);
             quad.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            quad.transform.localScale = new Vector3(PanelInset, PanelInset, 1f);
+            quad.transform.localScale = new Vector3(TileAssets.Width * PanelInset,
+                                                    TileAssets.Height * PanelInset, 1f);
 
             var renderer = quad.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = TileAssets.BodyMaterial;
@@ -106,6 +128,7 @@ namespace Mahjong.View.Board
 
             // 牌面有貼圖時底色要是白的，貼圖顏色才不會被染到
             faceBaseColor = unknown ? TileAssets.BodyColor : Color.white;
+            ApplyTint(NormalTint);
         }
 
         /// <summary>擺放位置與朝向。朝向由 BoardLayout 算好。</summary>
@@ -117,7 +140,7 @@ namespace Mahjong.View.Board
             transform.localRotation = rotation;
         }
 
-        /// <summary>把牌從原位抬起來一點，做出「被拿起來」的感覺。</summary>
+        /// <summary>把牌從原位抬起來，做出「被拿起來」的感覺。</summary>
         public void SetLift(Vector3 offset)
         {
             transform.localPosition = basePosition + offset;
@@ -135,6 +158,7 @@ namespace Mahjong.View.Board
 
         void ApplyTint(Color tint)
         {
+            if (tintBlock == null) return;
             SetRendererColor(bodyRenderer, TileAssets.BodyColor * tint);
             SetRendererColor(faceRenderer, faceBaseColor * tint);
             SetRendererColor(backRenderer, TileAssets.BackColor * tint);
@@ -142,6 +166,7 @@ namespace Mahjong.View.Board
 
         void SetRendererColor(MeshRenderer renderer, Color color)
         {
+            if (renderer == null) return;
             tintBlock.Clear();
             tintBlock.SetColor("_Color", color);
             renderer.SetPropertyBlock(tintBlock);

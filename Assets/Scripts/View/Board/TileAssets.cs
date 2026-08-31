@@ -123,15 +123,36 @@ namespace Mahjong.View.Board
             if (faceMaterials != null) return;
             faceMaterials = new Material[TotalKinds];
 
+            int inkedCount = 0;
             var baker = new FaceBaker();
             for (int tile = 0; tile < TotalKinds; tile++)
             {
-                var texture = baker.Bake(tile);
+                bool hasInk;
+                var texture = baker.Bake(tile, out hasInk);
+                if (hasInk) inkedCount++;
+
                 var material = CreateMaterial("TileFace" + tile, Color.white);
                 material.mainTexture = texture;
                 faceMaterials[tile] = material;
             }
             baker.Dispose();
+
+            ReportBakeResult(inkedCount);
+        }
+
+        /// <summary>
+        /// 牌面烘焙是最容易靜默失敗的一段：拍出來全白時畫面上看不出差別，
+        /// 只會覺得「牌面沒東西」。所以一律回報結果，出問題時直接看得出是哪一關。
+        /// </summary>
+        static void ReportBakeResult(int inkedCount)
+        {
+            string summary = string.Format(
+                "牌面烘焙：{0} 種牌，其中 {1} 種有畫到內容｜字型 {2}｜支援中文 {3}｜著色器 {4}",
+                TotalKinds, inkedCount, UiFont.SourceDescription, UiFont.SupportsChinese,
+                FindLitShader() == null ? "找不到" : FindLitShader().name);
+
+            if (inkedCount == TotalKinds) Debug.Log(summary);
+            else Debug.LogWarning(summary + "｜牌面沒有全部畫出來，請把這行貼給我");
         }
 
         /// <summary>
@@ -192,7 +213,7 @@ namespace Mahjong.View.Board
                 return label;
             }
 
-            public Texture2D Bake(int tile)
+            public Texture2D Bake(int tile, out bool hasInk)
             {
                 ApplyFace(tile);
 
@@ -220,10 +241,29 @@ namespace Mahjong.View.Board
                     anisoLevel = 4
                 };
                 texture.ReadPixels(new Rect(0f, 0f, FaceTextureWidth, FaceTextureHeight), 0, 0);
+
+                // 先確認真的畫到東西了，再把貼圖釋放成不可讀
+                hasInk = HasVisibleInk(texture);
                 texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
 
                 RenderTexture.active = previous;
                 return texture;
+            }
+
+            /// <summary>檢查貼圖上有沒有明顯比底色深的像素，也就是字有沒有畫出來</summary>
+            static bool HasVisibleInk(Texture2D texture)
+            {
+                const int SampleStep = 4;
+                const float DarkEnough = 0.55f;
+
+                var pixels = texture.GetPixels32();
+                for (int i = 0; i < pixels.Length; i += SampleStep)
+                {
+                    var pixel = pixels[i];
+                    float brightness = (pixel.r + pixel.g + pixel.b) / (3f * 255f);
+                    if (brightness < DarkEnough) return true;
+                }
+                return false;
             }
 
             void ApplyFace(int tile)
