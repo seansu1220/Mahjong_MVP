@@ -166,8 +166,9 @@ cd tools/CoreTests && dotnet run
 - [x] GameState.cs
 - [x] TurnEngine.cs
 - [x] ShantenCalculator.cs / AIPlayer.cs
-- [x] TileView.cs
-- [x] Bootstrap.cs / TableView.cs / HandView.cs / ActionButtons.cs
-- [x] ResultView.cs
+- [x] 3D 牌桌 `View/Board/`（TileAssets / TileObject / BoardLayout / TableBoard）
+- [x] 2D 介面 Bootstrap.cs / ActionButtons.cs / ResultView.cs / AnnouncementView.cs
+- [ ] 洗牌發牌與摸牌動畫（改 3D 後需重做）
 - [ ] 中文字型 Assets/Resources/MahjongFont.ttf（WebGL 必需，見 docs/CHANGELOG.md）
+- [ ] Standard 著色器加入 Always Included Shaders（WebGL 必需）
 - [ ] WebGL build 與 Firebase 部署
