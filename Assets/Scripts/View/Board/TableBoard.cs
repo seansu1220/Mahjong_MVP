@@ -19,7 +19,8 @@ namespace Mahjong.View.Board
 
     public class TableBoard : MonoBehaviour
     {
-        static readonly Color TableTopColor = new Color(0.07f, 0.32f, 0.22f);
+        // 桌布壓得比牌背深，牌擺上去才不會糊在一起
+        static readonly Color TableTopColor = new Color(0.05f, 0.24f, 0.17f);
         static readonly Color TableRimColor = new Color(0.16f, 0.10f, 0.06f);
         static readonly Color AmbientColor = new Color(0.42f, 0.45f, 0.43f);
 
@@ -228,9 +229,8 @@ namespace Mahjong.View.Board
                 var tile = TakeTile();
                 tile.SetTile(tileId);
                 tile.Clickable = false;
-                tile.Place(new Vector3(cursor + BoardLayout.HandStep * 0.5f,
-                                       TileAssets.Height * 0.5f, ShowcaseZ),
-                           BoardLayout.StandingFacingOwner);
+                var slot = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
+                tile.Place(new Vector3(slot.x, slot.y, ShowcaseZ), BoardLayout.HandRotation);
                 tile.SetNormal();
                 cursor += BoardLayout.HandStep;
             }
@@ -308,7 +308,7 @@ namespace Mahjong.View.Board
                 var local = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
                 Vector3 position;
                 Quaternion rotation;
-                BoardLayout.ToWorld(displayIndex, local, BoardLayout.StandingFacingOwner,
+                BoardLayout.ToWorld(displayIndex, local, BoardLayout.HandRotation,
                                     out position, out rotation);
 
                 var tile = TakeTile();

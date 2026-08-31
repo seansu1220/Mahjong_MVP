@@ -33,8 +33,11 @@ namespace Mahjong.View.Board
         /// <summary>牌身的白色。上色時要乘在這個底色上，不能直接取代。</summary>
         public static readonly Color BodyColor = new Color(0.94f, 0.93f, 0.88f);
 
-        /// <summary>牌背的綠色</summary>
-        public static readonly Color BackColor = new Color(0.13f, 0.47f, 0.29f);
+        /// <summary>
+        /// 牌背的綠色。刻意比桌布亮一階也更飽和，
+        /// 不然牌背貼在桌面上會整片糊在一起分不出來。
+        /// </summary>
+        public static readonly Color BackColor = new Color(0.20f, 0.63f, 0.40f);
         static readonly Color FaceBackground = new Color(0.985f, 0.978f, 0.955f);
 
         static readonly Color ManColor = new Color(0.70f, 0.13f, 0.13f);
@@ -161,6 +164,12 @@ namespace Mahjong.View.Board
 
                 var material = CreateMaterial("TileFace" + tile, Color.white);
                 material.mainTexture = texture;
+
+                // 牌面朝向自己時整張牌是繞 Y 轉 180 度的，貼圖的 U 方向會落在畫面左邊，
+                // 字就左右顛倒了。這裡把貼圖水平翻回來，不動幾何。
+                material.mainTextureScale = new Vector2(-1f, 1f);
+                material.mainTextureOffset = new Vector2(1f, 0f);
+
                 faceMaterials[tile] = material;
             }
             baker.Dispose();

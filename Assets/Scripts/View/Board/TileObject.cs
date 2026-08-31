@@ -5,17 +5,16 @@ namespace Mahjong.View.Board
     // ============================================================
     // 一張 3D 麻將牌
     //
-    // 結構就是實體牌的結構，三個零件都掛在一個「沒有縮放」的空物件底下：
-    //   Body  白色象牙牌身，一個縮放成牌形的立方體
-    //   Face  牌面，貼在牌身正面（本地 +Z）外側一點點
-    //   Back  牌背，貼在牌身背面（本地 -Z），綠色
+    // 實體麻將牌是「白色象牙牌身」黏上「綠色牌背」兩塊料，
+    // 綠色佔的是整個後半塊而不是薄薄一片——從側面看得到白綠的分界線。
+    // 所以這裡也用兩塊立方體前後接起來：
     //
-    // 零件不掛在立方體底下，是因為立方體是非等比縮放的，
-    // 子物件的座標與尺寸都得反推換算，很容易算錯也難查。
-    // 掛在未縮放的根物件上，所有數字就都是實際的世界尺寸。
+    //   BodyFront  前半塊，白色象牙，佔厚度的 58%
+    //   BodyBack   後半塊，綠色牌背，佔厚度的 42%
+    //   Face       牌面，一片薄面片，浮在前半塊的正面外側
     //
-    // 牌身比牌面大一圈，所以不論從哪個角度看，
-    // 牌面與牌背四周都會露出白色的牌身——這就是實體牌的樣子。
+    // 三個零件都掛在一個「沒有縮放」的空物件底下，
+    // 這樣所有數字都是實際的世界尺寸，不必反推換算。
     //
     // 本地座標定義：X = 寬、Y = 牌面的高、Z = 厚度，牌面法線為 +Z。
     // ============================================================
@@ -24,10 +23,13 @@ namespace Mahjong.View.Board
     {
         public const int NoTile = GameState.NoTile;
 
-        /// <summary>牌面與牌背比牌身小的比例，露出來的白邊就是牌身</summary>
+        /// <summary>白色牌身佔整體厚度的比例，其餘是綠色牌背</summary>
+        const float FrontDepthRatio = 0.58f;
+
+        /// <summary>牌面比牌身小的比例，露出來的白邊就是牌身</summary>
         const float PanelInset = 0.86f;
 
-        /// <summary>面板浮出牌身表面的距離，避免與牌身共面閃爍</summary>
+        /// <summary>牌面浮出牌身表面的距離，避免與牌身共面閃爍</summary>
         const float PanelLift = 0.0015f;
 
         static readonly Color NormalTint = Color.white;
@@ -35,13 +37,13 @@ namespace Mahjong.View.Board
         static readonly Color ClaimTint = new Color(0.66f, 0.86f, 1f);
         static readonly Color DimTint = new Color(0.74f, 0.74f, 0.72f);
 
-        MeshRenderer bodyRenderer;
-        MeshRenderer faceRenderer;
+        MeshRenderer frontRenderer;
         MeshRenderer backRenderer;
+        MeshRenderer faceRenderer;
         MaterialPropertyBlock tintBlock;
 
         // MaterialPropertyBlock 設 _Color 是「取代」材質原本的顏色而不是相乘，
-        // 所以要自己記住每一層的底色，上色時再乘上去，
+        // 所以要自己記住每一塊的底色，上色時再乘上去，
         // 否則綠色牌背會被白色的 tint 整片蓋掉。
         Color faceBaseColor = Color.white;
         Vector3 basePosition;
@@ -70,46 +72,51 @@ namespace Mahjong.View.Board
             var collider = gameObject.AddComponent<BoxCollider>();
             collider.size = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
 
-            bodyRenderer = CreateBody();
+            float frontDepth = TileAssets.Depth * FrontDepthRatio;
+            float backDepth = TileAssets.Depth - frontDepth;
 
-            // 牌面要朝外（本地 +Z）、牌背要朝另一邊（本地 -Z），
-            // 需要轉幾度交給 TileAssets 依網格法線判斷，不靠記憶硬填。
-            faceRenderer = CreatePanel("Face", TileAssets.Depth * 0.5f + PanelLift,
-                                       TileAssets.PanelYaw(faceTowardPositiveZ: true));
-            backRenderer = CreatePanel("Back", -(TileAssets.Depth * 0.5f + PanelLift),
-                                       TileAssets.PanelYaw(faceTowardPositiveZ: false));
-            backRenderer.sharedMaterial = TileAssets.BackMaterial;
+            // 兩塊前後接在一起：前半塊白、後半塊綠，接縫在厚度中間偏後
+            frontRenderer = CreateBlock("BodyFront", frontDepth,
+                                        (TileAssets.Depth - frontDepth) * 0.5f,
+                                        TileAssets.BodyMaterial);
+            backRenderer = CreateBlock("BodyBack", backDepth,
+                                       -(TileAssets.Depth - backDepth) * 0.5f,
+                                       TileAssets.BackMaterial);
+
+            faceRenderer = CreateFacePanel();
 
             tintBlock = new MaterialPropertyBlock();
             ApplyTint(NormalTint);
         }
 
-        MeshRenderer CreateBody()
+        MeshRenderer CreateBlock(string name, float depth, float z, Material material)
         {
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.name = "Body";
-            Destroy(body.GetComponent<Collider>());   // 點擊由根物件的 BoxCollider 負責
+            var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block.name = name;
+            Destroy(block.GetComponent<Collider>());   // 點擊由根物件的 BoxCollider 負責
 
-            body.transform.SetParent(transform, worldPositionStays: false);
-            body.transform.localPosition = Vector3.zero;
-            body.transform.localRotation = Quaternion.identity;
-            body.transform.localScale = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
+            block.transform.SetParent(transform, worldPositionStays: false);
+            block.transform.localPosition = new Vector3(0f, 0f, z);
+            block.transform.localRotation = Quaternion.identity;
+            block.transform.localScale = new Vector3(TileAssets.Width, TileAssets.Height, depth);
 
-            var renderer = body.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = TileAssets.BodyMaterial;
+            var renderer = block.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
             return renderer;
         }
 
-        /// <summary>牌面／牌背都是一片薄薄的面片，浮在牌身表面外側</summary>
-        MeshRenderer CreatePanel(string name, float z, float yaw)
+        /// <summary>牌面是一片薄面片，浮在前半塊的正面外側</summary>
+        MeshRenderer CreateFacePanel()
         {
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = name;
+            quad.name = "Face";
             Destroy(quad.GetComponent<Collider>());
 
             quad.transform.SetParent(transform, worldPositionStays: false);
-            quad.transform.localPosition = new Vector3(0f, 0f, z);
-            quad.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+            quad.transform.localPosition = new Vector3(0f, 0f, TileAssets.Depth * 0.5f + PanelLift);
+
+            // 內建 Quad 的正面朝哪邊不保證每個 Unity 版本都一樣，交給 TileAssets 讀網格判斷
+            quad.transform.localRotation = Quaternion.Euler(0f, TileAssets.PanelYaw(true), 0f);
             quad.transform.localScale = new Vector3(TileAssets.Width * PanelInset,
                                                     TileAssets.Height * PanelInset, 1f);
 
@@ -164,9 +171,9 @@ namespace Mahjong.View.Board
         void ApplyTint(Color tint)
         {
             if (tintBlock == null) return;
-            SetRendererColor(bodyRenderer, TileAssets.BodyColor * tint);
-            SetRendererColor(faceRenderer, faceBaseColor * tint);
+            SetRendererColor(frontRenderer, TileAssets.BodyColor * tint);
             SetRendererColor(backRenderer, TileAssets.BackColor * tint);
+            SetRendererColor(faceRenderer, faceBaseColor * tint);
         }
 
         void SetRendererColor(MeshRenderer renderer, Color color)

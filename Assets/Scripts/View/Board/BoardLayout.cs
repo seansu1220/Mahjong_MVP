@@ -69,6 +69,17 @@ namespace Mahjong.View.Board
         public static readonly Quaternion StandingFacingOwner =
             Quaternion.LookRotation(Vector3.back, Vector3.up);
 
+        /// <summary>
+        /// 手牌往後仰的角度。攝影機是從斜上方俯視的，牌若直挺挺站著，
+        /// 玩家看到的幾乎只有牌的上緣，牌面根本看不清楚。
+        /// 往後仰之後牌面就轉向攝影機，看起來接近正面朝著自己。
+        /// </summary>
+        public const float HandTiltDegrees = 58f;
+
+        /// <summary>手牌的朝向：立著面向自己，再整個往後仰</summary>
+        public static readonly Quaternion HandRotation =
+            Quaternion.AngleAxis(HandTiltDegrees, Vector3.right) * StandingFacingOwner;
+
         /// <summary>平躺、牌面朝上，字的上方朝向桌心（本地 +Z）</summary>
         public static readonly Quaternion LyingFaceUp =
             Quaternion.LookRotation(Vector3.up, Vector3.forward);
@@ -108,8 +119,17 @@ namespace Mahjong.View.Board
             return -total * 0.5f;
         }
 
+        /// <summary>
+        /// 手牌後仰之後高度會變矮、厚度會佔到高度，
+        /// 中心點要跟著調整，牌才會剛好貼在桌面上而不是陷進去或浮起來。
+        /// </summary>
         public static Vector3 HandSlot(float x)
-            => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
+        {
+            float radians = HandTiltDegrees * Mathf.Deg2Rad;
+            float standingHeight = TileAssets.Height * Mathf.Cos(radians)
+                                 + TileAssets.Depth * Mathf.Sin(radians);
+            return new Vector3(x, standingHeight * 0.5f, -HandDistance);
+        }
 
         public static Vector3 MeldSlot(float x)
             => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);
