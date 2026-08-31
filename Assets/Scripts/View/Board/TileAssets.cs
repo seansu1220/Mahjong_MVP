@@ -48,6 +48,7 @@ namespace Mahjong.View.Board
         static Material bodyMaterial;
         static Material backMaterial;
         static Material[] faceMaterials;
+        static float? panelYawTowardPositiveZ;
 
         static readonly string[] SuitNamesChinese = { "萬", "筒", "條" };
         static readonly string[] SuitNamesLatin = { "W", "T", "B" };
@@ -86,6 +87,33 @@ namespace Mahjong.View.Board
             EnsureFaceMaterials();
             if (tile < 0 || tile >= faceMaterials.Length) return BodyMaterial;
             return faceMaterials[tile];
+        }
+
+        /// <summary>
+        /// 內建 Quad 的正面要轉幾度才會朝向指定方向。
+        ///
+        /// Unity 內建 Quad 的法線是朝 -Z 的，如果照直覺把牌面放在 +Z 側又不轉，
+        /// 它的正面會朝著牌身內部，被背面剔除掉——畫面上就只剩白色的牌身。
+        /// 這個方向不保證每個 Unity 版本都一樣，所以不用記的，直接讀網格法線判斷。
+        /// </summary>
+        public static float PanelYaw(bool faceTowardPositiveZ)
+        {
+            if (!panelYawTowardPositiveZ.HasValue)
+                panelYawTowardPositiveZ = MeasureQuadYaw();
+
+            float towardPositiveZ = panelYawTowardPositiveZ.Value;
+            return faceTowardPositiveZ ? towardPositiveZ : towardPositiveZ + 180f;
+        }
+
+        static float MeasureQuadYaw()
+        {
+            var probe = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            var mesh = probe.GetComponent<MeshFilter>().sharedMesh;
+            var normals = mesh == null ? null : mesh.normals;
+            Object.Destroy(probe);
+
+            bool alreadyFacesPositiveZ = normals != null && normals.Length > 0 && normals[0].z > 0f;
+            return alreadyFacesPositiveZ ? 0f : 180f;
         }
 
         static Material CreateMaterial(string name, Color color)

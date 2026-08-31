@@ -71,8 +71,13 @@ namespace Mahjong.View.Board
             collider.size = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
 
             bodyRenderer = CreateBody();
-            faceRenderer = CreatePanel("Face", TileAssets.Depth * 0.5f + PanelLift, 0f);
-            backRenderer = CreatePanel("Back", -(TileAssets.Depth * 0.5f + PanelLift), 180f);
+
+            // 牌面要朝外（本地 +Z）、牌背要朝另一邊（本地 -Z），
+            // 需要轉幾度交給 TileAssets 依網格法線判斷，不靠記憶硬填。
+            faceRenderer = CreatePanel("Face", TileAssets.Depth * 0.5f + PanelLift,
+                                       TileAssets.PanelYaw(faceTowardPositiveZ: true));
+            backRenderer = CreatePanel("Back", -(TileAssets.Depth * 0.5f + PanelLift),
+                                       TileAssets.PanelYaw(faceTowardPositiveZ: false));
             backRenderer.sharedMaterial = TileAssets.BackMaterial;
 
             tintBlock = new MaterialPropertyBlock();
