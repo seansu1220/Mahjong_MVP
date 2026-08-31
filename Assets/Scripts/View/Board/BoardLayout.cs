@@ -9,7 +9,7 @@ namespace Mahjong.View.Board
     // 再依座位方位整個繞 Y 軸轉 90 度的倍數，四家就都排好了。
     //
     // 座位本地座標（自己在近端，面向 -Z）：
-    //   手牌   z = -2.42   立著，牌面朝 -Z（朝向自己與攝影機）
+    //   手牌   z = -2.42   立著，牌面朝 -Z（只畫三家對手，自己的手牌由 2D 負責）
     //   副露   z = -2.02   平躺攤開，牌面朝上
     //   牌河   z = -1.40 起往桌心排，平躺，牌面朝上
     //   牌山   離桌心 1.86，四邊圍成方框
@@ -33,8 +33,9 @@ namespace Mahjong.View.Board
         public const float HandStep = TileAssets.Width + 0.006f;
         public const float MeldStep = TileAssets.Width + 0.004f;
         public const float MeldGroupGap = 0.075f;
-        public const float DiscardStepX = TileAssets.Width + 0.008f;
-        public const float DiscardStepZ = TileAssets.Height + 0.020f;
+        // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
+        public const float DiscardStepX = TileAssets.Width + 0.024f;
+        public const float DiscardStepZ = TileAssets.Height + 0.060f;
         public const float WallStep = TileAssets.Width + 0.004f;
 
         public const int DiscardsPerRow = 8;
@@ -57,28 +58,24 @@ namespace Mahjong.View.Board
         public const float TableThickness = 0.16f;
 
         // ---- 攝影機（想調整視角就改這三個值）----
-        public static readonly Vector3 CameraPosition = new Vector3(0f, 3.35f, -4.25f);
-        public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, -0.55f);
+        // 自己的手牌改由 2D 畫在畫面下緣，所以視線往前壓一點，
+        // 把牌桌整體帶高，下緣空出來給手牌那一排。
+        public static readonly Vector3 CameraPosition = new Vector3(0f, 3.55f, -4.10f);
+        public static readonly Vector3 CameraTarget = new Vector3(0f, 0f, -1.05f);
         public const float CameraFieldOfView = 44f;
 
         // ------------------------------------------------------------
         // 基本朝向
         // ------------------------------------------------------------
 
-        /// <summary>立著、牌面朝向自己（本地 -Z）</summary>
+        /// <summary>
+        /// 立著、牌面朝向自己（本地 -Z）。三家對手的手牌都是這樣正常立著。
+        ///
+        /// 自己的手牌不在這裡畫——攝影機俯視牌桌，立著的牌只看得到上緣，
+        /// 把牌後仰又很不自然，所以自己的手牌交給 2D 的 HandStrip 畫在畫面下緣。
+        /// </summary>
         public static readonly Quaternion StandingFacingOwner =
             Quaternion.LookRotation(Vector3.back, Vector3.up);
-
-        /// <summary>
-        /// 手牌往後仰的角度。攝影機是從斜上方俯視的，牌若直挺挺站著，
-        /// 玩家看到的幾乎只有牌的上緣，牌面根本看不清楚。
-        /// 往後仰之後牌面就轉向攝影機，看起來接近正面朝著自己。
-        /// </summary>
-        public const float HandTiltDegrees = 58f;
-
-        /// <summary>手牌的朝向：立著面向自己，再整個往後仰</summary>
-        public static readonly Quaternion HandRotation =
-            Quaternion.AngleAxis(HandTiltDegrees, Vector3.right) * StandingFacingOwner;
 
         /// <summary>平躺、牌面朝上，字的上方朝向桌心（本地 +Z）</summary>
         public static readonly Quaternion LyingFaceUp =
@@ -124,12 +121,7 @@ namespace Mahjong.View.Board
         /// 中心點要跟著調整，牌才會剛好貼在桌面上而不是陷進去或浮起來。
         /// </summary>
         public static Vector3 HandSlot(float x)
-        {
-            float radians = HandTiltDegrees * Mathf.Deg2Rad;
-            float standingHeight = TileAssets.Height * Mathf.Cos(radians)
-                                 + TileAssets.Depth * Mathf.Sin(radians);
-            return new Vector3(x, standingHeight * 0.5f, -HandDistance);
-        }
+            => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
 
         public static Vector3 MeldSlot(float x)
             => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);

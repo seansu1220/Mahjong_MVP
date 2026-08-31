@@ -167,6 +167,7 @@ cd tools/CoreTests && dotnet run
 - [x] TurnEngine.cs
 - [x] ShantenCalculator.cs / AIPlayer.cs
 - [x] 3D 牌桌 `View/Board/`（TileAssets / TileObject / BoardLayout / TableBoard）
+- [x] 自己的手牌用 2D 顯示（HandStrip，共用 3D 的牌面貼圖）
 - [x] 2D 介面 Bootstrap.cs / ActionButtons.cs / ResultView.cs / AnnouncementView.cs
 - [ ] 洗牌發牌與摸牌動畫（改 3D 後需重做）
 - [ ] 中文字型 Assets/Resources/MahjongFont.ttf（WebGL 必需，見 docs/CHANGELOG.md）

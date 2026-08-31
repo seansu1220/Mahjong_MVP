@@ -7,11 +7,14 @@ namespace Mahjong.View.Board
     // ============================================================
     // 3D 牌桌
     //
-    // 取代原本用 uGUI 圖層疊出來的 2D 牌桌：桌面、牌山、四家的手牌、
-    // 副露與牌河全部是真的 3D 物件，由一台俯視攝影機拍下來。
+    // 桌面、牌山、三家對手的手牌、四家的副露與牌河都是真的 3D 物件，
+    // 由一台俯視攝影機拍下來。
     //
-    // 這一層只負責「把局面畫出來」與「把點擊丟出去」，
-    // 規則判定一律交給 Core，跟原本的分層一樣。
+    // **自己的手牌不在這裡畫**——攝影機俯視牌桌，立著的牌只看得到上緣，
+    // 把牌後仰又很不自然。自己的手牌交給 2D 的 HandStrip 畫在畫面下緣，
+    // 牌面共用同一份烘焙貼圖，所以兩邊的牌長得一模一樣。
+    //
+    // 這一層只負責把局面畫出來，規則判定一律交給 Core。
     //
     // 牌物件採用共用池：每次重畫只是搬位置與換材質，不重新生成，
     // 否則光牌山就有 144 張，每摸一次牌都全部重建會很浪費。
@@ -24,21 +27,14 @@ namespace Mahjong.View.Board
         static readonly Color TableRimColor = new Color(0.16f, 0.10f, 0.06f);
         static readonly Color AmbientColor = new Color(0.42f, 0.45f, 0.43f);
 
+        static readonly List<int> EmptyHand = new List<int>();
+
         int humanSeat;
         Camera boardCamera;
         Transform tileRoot;
 
         readonly List<TileObject> pool = new List<TileObject>();
         int usedTiles;
-
-        readonly List<TileObject> handTiles = new List<TileObject>();
-        readonly HashSet<int> claimHighlightSlots = new HashSet<int>();
-
-        TileObject selectedTile;
-        bool handInteractable;
-
-        /// <summary>玩家決定打出這張牌</summary>
-        public event Action<int> TileChosen;
 
         /// <summary>牌局結束後把三家的手牌翻開</summary>
         public bool RevealHands { get; set; }
@@ -111,33 +107,25 @@ namespace Mahjong.View.Board
 
         void BuildTableSurface()
         {
-            var table = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            table.name = "TableTop";
-            table.transform.SetParent(transform, worldPositionStays: false);
-            table.transform.localPosition = new Vector3(0f, -BoardLayout.TableThickness * 0.5f, 0f);
-            table.transform.localScale = new Vector3(BoardLayout.TableSize,
-                                                     BoardLayout.TableThickness,
-                                                     BoardLayout.TableSize);
-            Destroy(table.GetComponent<Collider>());   // 桌面不參與點擊
-            table.GetComponent<MeshRenderer>().sharedMaterial = CreateSurfaceMaterial(TableTopColor);
-
-            var rim = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            rim.name = "TableRim";
-            rim.transform.SetParent(transform, worldPositionStays: false);
-            rim.transform.localPosition = new Vector3(0f, -BoardLayout.TableThickness * 1.4f, 0f);
-            rim.transform.localScale = new Vector3(BoardLayout.TableSize + 0.7f,
-                                                   BoardLayout.TableThickness,
-                                                   BoardLayout.TableSize + 0.7f);
-            Destroy(rim.GetComponent<Collider>());
-            rim.GetComponent<MeshRenderer>().sharedMaterial = CreateSurfaceMaterial(TableRimColor);
+            CreateSlab("TableTop", BoardLayout.TableSize,
+                       -BoardLayout.TableThickness * 0.5f, TableTopColor);
+            CreateSlab("TableRim", BoardLayout.TableSize + 0.7f,
+                       -BoardLayout.TableThickness * 1.4f, TableRimColor);
         }
 
-        static Material CreateSurfaceMaterial(Color color)
+        void CreateSlab(string name, float size, float y, Color color)
         {
+            var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            slab.name = name;
+            slab.transform.SetParent(transform, worldPositionStays: false);
+            slab.transform.localPosition = new Vector3(0f, y, 0f);
+            slab.transform.localScale = new Vector3(size, BoardLayout.TableThickness, size);
+            Destroy(slab.GetComponent<Collider>());   // 桌面不參與點擊
+
             var shader = Shader.Find("Standard") ?? Shader.Find("Sprites/Default");
             var material = new Material(shader) { color = color };
             if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.1f);
-            return material;
+            slab.GetComponent<MeshRenderer>().sharedMaterial = material;
         }
 
         // ------------------------------------------------------------
@@ -149,10 +137,8 @@ namespace Mahjong.View.Board
             if (state == null) throw new ArgumentNullException(nameof(state));
 
             usedTiles = 0;
-            handTiles.Clear();
-            selectedTile = null;
-
             DrawWall(state);
+
             for (int offset = 0; offset < BoardLayout.SeatCount; offset++)
             {
                 int seat = (humanSeat + offset) % BoardLayout.SeatCount;
@@ -161,16 +147,127 @@ namespace Mahjong.View.Board
 
             DrawWinningShowcase();
             HideUnusedTiles();
-            ApplyHandVisuals();
+        }
+
+        void DrawWall(GameState state)
+        {
+            if (state.Wall == null) return;
+
+            int total = BoardLayout.TotalWallStacks;
+            int headStack = state.Wall.DrawnFromHead / BoardLayout.WallTilesPerStack;
+            int tailStack = total - 1 - state.Wall.DrawnFromTail / BoardLayout.WallTilesPerStack;
+            bool headHalfTaken = state.Wall.DrawnFromHead % BoardLayout.WallTilesPerStack != 0;
+            bool tailHalfTaken = state.Wall.DrawnFromTail % BoardLayout.WallTilesPerStack != 0;
+
+            for (int stack = Mathf.Max(0, headStack); stack <= tailStack && stack < total; stack++)
+            {
+                int layers = BoardLayout.WallTilesPerStack;
+                if (stack == headStack && headHalfTaken) layers--;
+                if (stack == tailStack && tailHalfTaken) layers--;
+
+                // 上層先被摸走，所以只剩一張時畫的是下層那張
+                for (int layer = 0; layer < layers; layer++)
+                {
+                    Vector3 position;
+                    Quaternion rotation;
+                    BoardLayout.WallStack(stack, layer, out position, out rotation);
+
+                    var tile = TakeTile();
+                    tile.SetTile(TileObject.NoTile);
+                    tile.Place(position, rotation);
+                }
+            }
+        }
+
+        void DrawSeat(GameState state, int seat, int displayIndex)
+        {
+            var player = state.Players[seat];
+            if (player == null) return;
+
+            float meldWidth = MeasureMelds(player.Melds);
+
+            // 自己的手牌由 2D 的 HandStrip 畫在畫面下緣，桌上不重複再畫一次
+            var handList = seat == humanSeat ? EmptyHand : CollectHand(player);
+
+            float cursor = BoardLayout.HandRowStartX(handList.Count, meldWidth);
+            DrawHand(handList, displayIndex, RevealHands, ref cursor);
+
+            if (player.Melds.Count > 0) cursor += BoardLayout.HandToMeldGap;
+            DrawMelds(player.Melds, displayIndex, cursor);
+
+            DrawDiscards(player.Discards, displayIndex);
+        }
+
+        static List<int> CollectHand(PlayerState player)
+        {
+            var tiles = new List<int>();
+            for (int tile = 0; tile < TileDef.KINDS; tile++)
+                for (int count = 0; count < player.ConcealedCounts[tile]; count++)
+                    tiles.Add(tile);
+            return tiles;
+        }
+
+        void DrawHand(List<int> tiles, int displayIndex, bool faceUp, ref float cursor)
+        {
+            foreach (int tileId in tiles)
+            {
+                var local = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
+                PlaceTile(faceUp ? tileId : TileObject.NoTile, displayIndex, local,
+                          BoardLayout.StandingFacingOwner);
+                cursor += BoardLayout.HandStep;
+            }
+        }
+
+        static float MeasureMelds(List<Meld> melds)
+        {
+            if (melds.Count == 0) return 0f;
+
+            float width = 0f;
+            foreach (var meld in melds)
+                width += meld.Tiles().Length * BoardLayout.MeldStep + BoardLayout.MeldGroupGap;
+            return width - BoardLayout.MeldGroupGap;
+        }
+
+        /// <summary>副露平躺攤在自己面前，被吃碰走的那張排在整組中間。</summary>
+        void DrawMelds(List<Meld> melds, int displayIndex, float cursor)
+        {
+            foreach (var meld in melds)
+            {
+                var layout = MeldDisplay.Arrange(meld);
+                foreach (int tileId in layout.Tiles)
+                {
+                    var local = BoardLayout.MeldSlot(cursor + BoardLayout.MeldStep * 0.5f);
+                    PlaceTile(tileId, displayIndex, local, BoardLayout.LyingFaceUp);
+                    cursor += BoardLayout.MeldStep;
+                }
+                cursor += BoardLayout.MeldGroupGap;
+            }
+        }
+
+        void DrawDiscards(List<int> discards, int displayIndex)
+        {
+            for (int i = 0; i < discards.Count; i++)
+                PlaceTile(discards[i], displayIndex, BoardLayout.DiscardSlot(i),
+                          BoardLayout.LyingFaceUp);
+        }
+
+        void PlaceTile(int tileId, int displayIndex, Vector3 localPosition, Quaternion localRotation)
+        {
+            Vector3 position;
+            Quaternion rotation;
+            BoardLayout.ToWorld(displayIndex, localPosition, localRotation, out position, out rotation);
+
+            var tile = TakeTile();
+            tile.SetTile(tileId);
+            tile.Place(position, rotation);
         }
 
         // ------------------------------------------------------------
         // 結算時攤在桌心的贏家牌型
         // ------------------------------------------------------------
 
-        const float ShowcaseZ = -0.10f;
+        const float ShowcaseZ = 0.05f;
         const float ShowcaseSectionGap = 0.14f;
-        const float ShowcaseMeldGap = 0.08f;
 
         PlayerState showcaseWinner;
         int showcaseWinningTile = TileObject.NoTile;
@@ -188,6 +285,7 @@ namespace Mahjong.View.Board
             showcaseWinningTile = TileObject.NoTile;
         }
 
+        /// <summary>攤在桌心的牌一律平躺朝上——俯視角度下平躺比立著好讀。</summary>
         void DrawWinningShowcase()
         {
             if (showcaseWinner == null) return;
@@ -216,9 +314,9 @@ namespace Mahjong.View.Board
 
         static float MeasureShowcase(int concealedCount, List<Meld> melds)
         {
-            float width = concealedCount * BoardLayout.HandStep;
+            float width = concealedCount * BoardLayout.MeldStep;
             foreach (var meld in melds)
-                width += ShowcaseSectionGap + meld.Tiles().Length * BoardLayout.HandStep;
+                width += ShowcaseSectionGap + meld.Tiles().Length * BoardLayout.MeldStep;
             return width;
         }
 
@@ -228,151 +326,12 @@ namespace Mahjong.View.Board
             {
                 var tile = TakeTile();
                 tile.SetTile(tileId);
-                tile.Clickable = false;
-                var slot = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
-                tile.Place(new Vector3(slot.x, slot.y, ShowcaseZ), BoardLayout.HandRotation);
-                tile.SetNormal();
-                cursor += BoardLayout.HandStep;
+                tile.Place(new Vector3(cursor + BoardLayout.MeldStep * 0.5f,
+                                       TileAssets.Depth * 0.5f, ShowcaseZ),
+                           BoardLayout.LyingFaceUp);
+                cursor += BoardLayout.MeldStep;
             }
             return cursor;
-        }
-
-        void DrawWall(GameState state)
-        {
-            if (state.Wall == null) return;
-
-            int drawnFromHead = state.Wall.DrawnFromHead;
-            int drawnFromTail = state.Wall.DrawnFromTail;
-            int total = BoardLayout.TotalWallStacks;
-
-            int headStack = drawnFromHead / BoardLayout.WallTilesPerStack;
-            int tailStack = total - 1 - drawnFromTail / BoardLayout.WallTilesPerStack;
-            bool headHalfTaken = drawnFromHead % BoardLayout.WallTilesPerStack != 0;
-            bool tailHalfTaken = drawnFromTail % BoardLayout.WallTilesPerStack != 0;
-
-            for (int stack = Mathf.Max(0, headStack); stack <= tailStack && stack < total; stack++)
-            {
-                int layers = BoardLayout.WallTilesPerStack;
-                if (stack == headStack && headHalfTaken) layers--;
-                if (stack == tailStack && tailHalfTaken) layers--;
-
-                // 上層先被摸走，所以只剩一張時畫的是下層那張
-                for (int layer = 0; layer < layers; layer++)
-                {
-                    Vector3 position;
-                    Quaternion rotation;
-                    BoardLayout.WallStack(stack, layer, out position, out rotation);
-
-                    var tile = TakeTile();
-                    tile.SetTile(TileObject.NoTile);
-                    tile.Clickable = false;
-                    tile.Place(position, rotation);
-                    tile.SetNormal();
-                }
-            }
-        }
-
-        void DrawSeat(GameState state, int seat, int displayIndex)
-        {
-            var player = state.Players[seat];
-            if (player == null) return;
-
-            bool isHuman = seat == humanSeat;
-            bool faceUp = isHuman || RevealHands;
-
-            var meldWidths = MeasureMelds(player.Melds);
-            var handList = CollectHand(player);
-
-            float cursor = BoardLayout.HandRowStartX(handList.Count, meldWidths);
-            DrawHand(handList, displayIndex, isHuman, faceUp, ref cursor);
-
-            if (player.Melds.Count > 0) cursor += BoardLayout.HandToMeldGap;
-            DrawMelds(player.Melds, displayIndex, cursor);
-
-            DrawDiscards(player.Discards, displayIndex);
-        }
-
-        static List<int> CollectHand(PlayerState player)
-        {
-            var tiles = new List<int>();
-            for (int tile = 0; tile < TileDef.KINDS; tile++)
-                for (int count = 0; count < player.ConcealedCounts[tile]; count++)
-                    tiles.Add(tile);
-            return tiles;
-        }
-
-        void DrawHand(List<int> tiles, int displayIndex, bool isHuman, bool faceUp, ref float cursor)
-        {
-            foreach (int tileId in tiles)
-            {
-                var local = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
-                Vector3 position;
-                Quaternion rotation;
-                BoardLayout.ToWorld(displayIndex, local, BoardLayout.HandRotation,
-                                    out position, out rotation);
-
-                var tile = TakeTile();
-                tile.SetTile(faceUp ? tileId : TileObject.NoTile);
-                tile.Clickable = isHuman;
-                tile.Place(position, rotation);
-                tile.SetNormal();
-
-                if (isHuman) handTiles.Add(tile);
-                cursor += BoardLayout.HandStep;
-            }
-        }
-
-        static float MeasureMelds(List<Meld> melds)
-        {
-            if (melds.Count == 0) return 0f;
-
-            float width = 0f;
-            foreach (var meld in melds)
-                width += meld.Tiles().Length * BoardLayout.MeldStep + BoardLayout.MeldGroupGap;
-            return width - BoardLayout.MeldGroupGap;
-        }
-
-        /// <summary>副露平躺攤在自己面前，被吃碰走的那張排在整組中間。</summary>
-        void DrawMelds(List<Meld> melds, int displayIndex, float cursor)
-        {
-            foreach (var meld in melds)
-            {
-                var layout = MeldDisplay.Arrange(meld);
-                foreach (int tileId in layout.Tiles)
-                {
-                    var local = BoardLayout.MeldSlot(cursor + BoardLayout.MeldStep * 0.5f);
-                    Vector3 position;
-                    Quaternion rotation;
-                    BoardLayout.ToWorld(displayIndex, local, BoardLayout.LyingFaceUp,
-                                        out position, out rotation);
-
-                    var tile = TakeTile();
-                    tile.SetTile(tileId);
-                    tile.Clickable = false;
-                    tile.Place(position, rotation);
-                    tile.SetNormal();
-
-                    cursor += BoardLayout.MeldStep;
-                }
-                cursor += BoardLayout.MeldGroupGap;
-            }
-        }
-
-        void DrawDiscards(List<int> discards, int displayIndex)
-        {
-            for (int i = 0; i < discards.Count; i++)
-            {
-                Vector3 position;
-                Quaternion rotation;
-                BoardLayout.ToWorld(displayIndex, BoardLayout.DiscardSlot(i), BoardLayout.LyingFaceUp,
-                                    out position, out rotation);
-
-                var tile = TakeTile();
-                tile.SetTile(discards[i]);
-                tile.Clickable = false;
-                tile.Place(position, rotation);
-                tile.SetNormal();
-            }
         }
 
         // ------------------------------------------------------------
@@ -385,96 +344,13 @@ namespace Mahjong.View.Board
 
             var tile = pool[usedTiles++];
             tile.SetVisible(true);
+            tile.SetNormal();
             return tile;
         }
 
         void HideUnusedTiles()
         {
             for (int i = usedTiles; i < pool.Count; i++) pool[i].SetVisible(false);
-        }
-
-        // ------------------------------------------------------------
-        // 玩家操作
-        // ------------------------------------------------------------
-
-        public void SetHandInteractable(bool value)
-        {
-            handInteractable = value;
-            if (!value) selectedTile = null;
-            ApplyHandVisuals();
-        }
-
-        /// <summary>標出手上會被拿去湊成那一組的牌。傳 null 表示清掉提示。</summary>
-        public void SetClaimHighlight(int[] tileCounts)
-        {
-            claimHighlightSlots.Clear();
-
-            if (tileCounts != null)
-            {
-                var remaining = (int[])tileCounts.Clone();
-                for (int i = 0; i < handTiles.Count; i++)
-                {
-                    int tileId = handTiles[i].Tile;
-                    if (tileId < 0 || tileId >= TileDef.KINDS || remaining[tileId] <= 0) continue;
-                    remaining[tileId]--;
-                    claimHighlightSlots.Add(i);
-                }
-            }
-            ApplyHandVisuals();
-        }
-
-        public void ClearClaimHighlight() => SetClaimHighlight(null);
-
-        /// <summary>
-        /// 三種狀態會互相覆蓋，套用順序固定為：可否點擊 → 叫牌提示 → 已選取。
-        /// 叫牌提示要蓋過變灰，因為考慮要不要碰的時候手牌本來就不能點。
-        /// </summary>
-        void ApplyHandVisuals()
-        {
-            for (int i = 0; i < handTiles.Count; i++)
-            {
-                var tile = handTiles[i];
-                bool isSelected = tile == selectedTile;
-                bool isClaimTile = claimHighlightSlots.Contains(i);
-
-                if (handInteractable) tile.SetNormal();
-                else tile.SetDimmed();
-                if (isClaimTile) tile.SetClaimHighlight();
-                if (isSelected) tile.SetSelected();
-
-                // 選到的牌整張抬起來，跟真的把牌拿出來一樣
-                tile.SetLift(isSelected ? BoardLayout.SelectedLift
-                           : (isClaimTile ? BoardLayout.ClaimLift : Vector3.zero));
-            }
-        }
-
-        void Update()
-        {
-            if (!handInteractable || !Input.GetMouseButtonDown(0)) return;
-            if (boardCamera == null) return;
-
-            RaycastHit hit;
-            if (!Physics.Raycast(boardCamera.ScreenPointToRay(Input.mousePosition), out hit, 100f)) return;
-
-            var tile = hit.collider.GetComponentInParent<TileObject>();
-            if (tile == null || !tile.Clickable) return;
-
-            OnTileClicked(tile);
-        }
-
-        /// <summary>點一下選取，再點同一張才真的打出，避免手滑打錯牌。</summary>
-        void OnTileClicked(TileObject tile)
-        {
-            if (selectedTile == tile)
-            {
-                int chosen = tile.Tile;
-                selectedTile = null;
-                if (TileChosen != null) TileChosen(chosen);
-                return;
-            }
-
-            selectedTile = tile;
-            ApplyHandVisuals();
         }
     }
 }

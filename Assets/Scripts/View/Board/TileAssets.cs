@@ -51,6 +51,8 @@ namespace Mahjong.View.Board
         static Material bodyMaterial;
         static Material backMaterial;
         static Material[] faceMaterials;
+        static Texture2D[] faceTextures;
+        static Sprite[] faceSprites;
         static float? panelYawTowardPositiveZ;
 
         static readonly string[] SuitNamesChinese = { "萬", "筒", "條" };
@@ -90,6 +92,27 @@ namespace Mahjong.View.Board
             EnsureFaceMaterials();
             if (tile < 0 || tile >= faceMaterials.Length) return BodyMaterial;
             return faceMaterials[tile];
+        }
+
+        /// <summary>
+        /// 同一張牌面給 2D 介面用的 Sprite。
+        /// 自己的手牌是用 UI 畫的，共用這份烘焙貼圖，2D 與 3D 的牌才會長得一模一樣。
+        /// 貼圖本身沒有鏡像（3D 那邊的翻轉是套在材質的 UV 上），可以直接用。
+        /// </summary>
+        public static Sprite FaceSprite(int tile)
+        {
+            EnsureFaceMaterials();
+            if (tile < 0 || tile >= faceTextures.Length) return null;
+
+            if (faceSprites == null) faceSprites = new Sprite[faceTextures.Length];
+            if (faceSprites[tile] == null)
+            {
+                var texture = faceTextures[tile];
+                faceSprites[tile] = Sprite.Create(
+                    texture, new Rect(0f, 0f, texture.width, texture.height),
+                    new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
+            }
+            return faceSprites[tile];
         }
 
         /// <summary>
@@ -154,6 +177,8 @@ namespace Mahjong.View.Board
             if (faceMaterials != null) return;
             faceMaterials = new Material[TotalKinds];
 
+            faceTextures = new Texture2D[TotalKinds];
+
             int inkedCount = 0;
             var baker = new FaceBaker();
             for (int tile = 0; tile < TotalKinds; tile++)
@@ -161,6 +186,7 @@ namespace Mahjong.View.Board
                 bool hasInk;
                 var texture = baker.Bake(tile, out hasInk);
                 if (hasInk) inkedCount++;
+                faceTextures[tile] = texture;
 
                 var material = CreateMaterial("TileFace" + tile, Color.white);
                 material.mainTexture = texture;

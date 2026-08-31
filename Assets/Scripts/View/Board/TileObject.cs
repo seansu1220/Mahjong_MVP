@@ -52,9 +52,6 @@ namespace Mahjong.View.Board
         /// <summary>這張牌的 id；蓋著或未知為 NoTile</summary>
         public int Tile { get; private set; } = NoTile;
 
-        /// <summary>是不是玩家可以點的牌。只有自己手上輪到出牌時才會開。</summary>
-        public bool Clickable { get; set; }
-
         // ------------------------------------------------------------
 
         public static TileObject Create(Transform parent)

@@ -43,6 +43,7 @@ namespace Mahjong.View
         AIPlayer[] opponents;
 
         TableBoard board;
+        HandStrip handStrip;
         ActionButtons actionButtons;
         ResultView resultView;
         AnnouncementView announcement;
@@ -85,11 +86,14 @@ namespace Mahjong.View
             EnsureEventSystem();
 
             board = TableBoard.Create(HumanSeat);
-            board.TileChosen += OnHumanTileChosen;
 
             var canvas = CreateOverlayCanvas();
             BuildSeatLabels(canvas.transform);
             BuildStatusLabels(canvas.transform);
+
+            // 自己的手牌用 2D 畫在畫面下緣，牌面共用 3D 那份烘焙貼圖
+            handStrip = HandStrip.Create(canvas.transform);
+            handStrip.TileChosen += OnHumanTileChosen;
 
             actionButtons = ActionButtons.Create(canvas.transform);
             actionButtons.ActionChosen += OnHumanActionChosen;
@@ -218,6 +222,8 @@ namespace Mahjong.View
         void RefreshAll()
         {
             board.Refresh(state);
+            handStrip.Refresh(state.Players[HumanSeat],
+                              state.CurrentPlayer == HumanSeat ? lastDrawnTile : TileObject.NoTile);
             RefreshLabels();
         }
 
@@ -454,11 +460,11 @@ namespace Mahjong.View
             SetStatus(UiFont.SupportsChinese ? "輪到你出牌（點兩下打出）" : "Your turn: tap twice");
             actionButtons.Show(humanTurnOptions);
             readyButton.gameObject.SetActive(CanDeclareReadyNow());
-            board.SetHandInteractable(true);
+            handStrip.SetInteractable(true);
 
             while (pendingHumanAction == null) yield return null;
 
-            board.SetHandInteractable(false);
+            handStrip.SetInteractable(false);
             actionButtons.Hide();
             readyButton.gameObject.SetActive(false);
             SetStatus("");
@@ -475,7 +481,7 @@ namespace Mahjong.View
             while (pendingHumanAction == null) yield return null;
 
             actionButtons.Hide();
-            board.ClearClaimHighlight();
+            handStrip.ClearClaimHighlight();
             SetStatus("");
         }
 
@@ -522,7 +528,7 @@ namespace Mahjong.View
 
         /// <summary>只有滑鼠移到某個叫牌按鈕上時才標出那一組會用掉的牌，移開就清掉。</summary>
         void OnHumanActionHovered(GameAction action)
-            => board.SetClaimHighlight(TilesUsedBy(action));
+            => handStrip.SetClaimHighlight(TilesUsedBy(action));
 
         static int[] TilesUsedBy(GameAction action)
         {
@@ -550,8 +556,8 @@ namespace Mahjong.View
 
         IEnumerator ShowResult(TurnResult result)
         {
-            board.SetHandInteractable(false);
-            board.ClearClaimHighlight();
+            handStrip.SetInteractable(false);
+            handStrip.ClearClaimHighlight();
             actionButtons.Hide();
             readyButton.gameObject.SetActive(false);
 
