@@ -363,7 +363,7 @@ namespace Mahjong.View
                 foreach (var option in humanOptions)
                     if (option.Type == ActionType.Win) declarations.Add(option);
             }
-            else if (HasRealChoice(humanOptions))
+            else if (HasRealChoice(humanOptions) && CanBeatDeclarations(humanOptions, declarations))
             {
                 yield return WaitForHumanClaim(humanOptions);
                 if (pendingHumanAction != null && pendingHumanAction.Type != ActionType.Pass)
@@ -406,6 +406,32 @@ namespace Mahjong.View
             foreach (var option in options)
                 if (option.Type != ActionType.Pass) return true;
             return false;
+        }
+
+        /// <summary>
+        /// 玩家有沒有辦法壓過別人已經宣告的動作。
+        ///
+        /// 別人碰了而玩家只能吃時，碰一定贏，這時候還讓玩家慢慢選是白等——
+        /// 碰的人不必等吃的人。反過來玩家能胡（胡贏碰）就一定要問。
+        /// </summary>
+        static bool CanBeatDeclarations(List<GameAction> humanOptions,
+                                        List<GameAction> declarations)
+        {
+            int othersBest = BestPriority(declarations);
+            if (othersBest == int.MaxValue) return true;   // 沒人宣告，當然要問
+            return BestPriority(humanOptions) <= othersBest;
+        }
+
+        static int BestPriority(List<GameAction> options)
+        {
+            int best = int.MaxValue;
+            foreach (var option in options)
+            {
+                if (option.Type == ActionType.Pass) continue;
+                int priority = TurnEngine.ClaimPriority(option.Type);
+                if (priority < best) best = priority;
+            }
+            return best;
         }
 
         // ------------------------------------------------------------

@@ -14,7 +14,7 @@ namespace Mahjong.View
     //
     // 用 2D 畫而不是在牌桌上擺 3D 物件：結算是要讓玩家把牌看清楚，
     // 攤在桌上會被透視壓扁，也會跟桌上原有的牌疊在一起。
-    // 牌面共用 TileAssets 烘焙好的那份貼圖，跟桌上的牌長得一模一樣。
+    // 每一張用的是「3D 牌拍下來的照片」，跟桌上的牌長得一模一樣。
     // ============================================================
 
     public class WinningHandView : MonoBehaviour
@@ -23,13 +23,8 @@ namespace Mahjong.View
         const float TileGap = 4f;
         const float SectionGap = 40f;      // 手牌、副露、胡牌張三段之間
         const float MeldGap = 22f;         // 副露每一組之間
-        const float FaceInset = 5f;
-
-        const float BottomEdgeRatio = 0.10f;
 
         static readonly Color BackdropColor = new Color(0f, 0f, 0f, 0.78f);
-        static readonly Color TileColor = new Color(0.965f, 0.955f, 0.915f);
-        static readonly Color BottomEdgeColor = new Color(0.80f, 0.78f, 0.73f);
 
         RectTransform row;
         readonly List<GameObject> tiles = new List<GameObject>();
@@ -129,24 +124,11 @@ namespace Mahjong.View
 
         void CreateTile(int tile, float x)
         {
-            var body = UIFactory.CreateImage("Tile", row, TileColor);
+            var body = UIFactory.CreateImage("Tile", row, Color.white, rounded: false);
+            body.sprite = Board.TileAssets.TileSprite(tile);
+            body.preserveAspect = true;
             UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
                              new Vector2(x, 0f), TileSize);
-
-            // 跟手牌一樣在下緣加一條厚度，看起來才像立體的牌而不是貼紙
-            float edgeHeight = TileSize.y * BottomEdgeRatio;
-            var edge = UIFactory.CreateImage("BottomEdge", body.transform, BottomEdgeColor,
-                                             rounded: false);
-            UIFactory.Anchor(edge.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(0f, 2f), new Vector2(TileSize.x - 6f, edgeHeight));
-
-            var face = UIFactory.CreateImage("Face", body.transform, Color.white, rounded: false);
-            face.sprite = Board.TileAssets.FaceSprite(tile);
-            face.preserveAspect = true;
-            face.rectTransform.anchorMin = Vector2.zero;
-            face.rectTransform.anchorMax = Vector2.one;
-            face.rectTransform.offsetMin = new Vector2(FaceInset, edgeHeight + 4f);
-            face.rectTransform.offsetMax = new Vector2(-FaceInset, -FaceInset);
 
             tiles.Add(body.gameObject);
         }

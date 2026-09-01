@@ -20,8 +20,6 @@ namespace Mahjong.View
         static readonly Vector2 TileSize = new Vector2(62f, 84f);
 
         static readonly Color RingColor = new Color(0.72f, 0.45f, 1f);
-        static readonly Color TileColor = new Color(0.97f, 0.96f, 0.93f);
-        const float FaceInset = 5f;
 
         RectTransform canvasRect;
         RectTransform holder;
@@ -49,13 +47,10 @@ namespace Mahjong.View
             ring.sprite = Board.TileAssets.RingSprite;
             UIFactory.Stretch(ring.rectTransform);
 
-            var body = UIFactory.CreateImage("Tile", holder, TileColor);
-            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                             Vector2.zero, TileSize);
-
-            tileFace = UIFactory.CreateImage("Face", body.transform, Color.white, rounded: false);
+            tileFace = UIFactory.CreateImage("Tile", holder, Color.white, rounded: false);
             tileFace.preserveAspect = true;
-            UIFactory.Stretch(tileFace.rectTransform, FaceInset);
+            UIFactory.Anchor(tileFace.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                             Vector2.zero, TileSize);
         }
 
         // ------------------------------------------------------------
@@ -91,7 +86,7 @@ namespace Mahjong.View
             }
 
             holder.anchoredPosition = local;
-            tileFace.sprite = Board.TileAssets.FaceSprite(tile);
+            tileFace.sprite = Board.TileAssets.TileSprite(tile);
             gameObject.SetActive(true);
         }
 

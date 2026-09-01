@@ -377,6 +377,13 @@ namespace Mahjong
             return best;
         }
 
+        /// <summary>
+        /// 宣告的優先權，數字越小越優先：胡 0 &gt; 碰/槓 1 &gt; 吃 2。
+        /// 畫面用它判斷「別人已經宣告的動作是不是壓過玩家所有選擇」，
+        /// 壓過的話就不必再等玩家決定，直接結算。
+        /// </summary>
+        public static int ClaimPriority(ActionType type) => PriorityRank(type);
+
         static int PriorityRank(ActionType type)
         {
             switch (type)

@@ -53,7 +53,7 @@ namespace Mahjong.View.Board
         static Sprite ringSprite;
         static Material[] faceMaterials;
         static Texture2D[] faceTextures;
-        static Sprite[] faceSprites;
+        static Sprite[] tileSprites;
         static float? panelYawTowardPositiveZ;
 
         static readonly string[] SuitNamesChinese = { "萬", "筒", "條" };
@@ -96,24 +96,109 @@ namespace Mahjong.View.Board
         }
 
         /// <summary>
-        /// 同一張牌面給 2D 介面用的 Sprite。
-        /// 自己的手牌是用 UI 畫的，共用這份烘焙貼圖，2D 與 3D 的牌才會長得一模一樣。
-        /// 貼圖本身沒有鏡像（3D 那邊的翻轉是套在材質的 UV 上），可以直接用。
+        /// 一整張 3D 牌拍成的 2D 圖，給介面用。
+        ///
+        /// 自己的手牌、結算牌型、打牌提示都是 2D 的。與其在 UI 裡用色塊
+        /// 拼出假的立體感（做過，看起來像貼紙），不如把真正的 3D 牌放到
+        /// 離屏攝影機前拍一張——頂面、側面、光影全部是真的。
+        /// 市面上的麻將遊戲用的也是這個做法。
+        ///
+        /// 只在開場拍一次，42 種牌各一張。
         /// </summary>
-        public static Sprite FaceSprite(int tile)
+        public static Sprite TileSprite(int tile)
         {
-            EnsureFaceMaterials();
-            if (tile < 0 || tile >= faceTextures.Length) return null;
+            EnsureTileSprites();
+            if (tile < 0 || tile >= tileSprites.Length) return null;
+            return tileSprites[tile];
+        }
 
-            if (faceSprites == null) faceSprites = new Sprite[faceTextures.Length];
-            if (faceSprites[tile] == null)
+        static void EnsureTileSprites()
+        {
+            if (tileSprites != null) return;
+            tileSprites = new Sprite[TotalKinds];
+
+            var baker = new TileBaker();
+            for (int tile = 0; tile < TotalKinds; tile++) tileSprites[tile] = baker.Bake(tile);
+            baker.Dispose();
+
+            Debug.Log("3D 牌已拍成 2D 圖：" + TotalKinds + " 種");
+        }
+
+        /// <summary>
+        /// 把一張 3D 牌拍成帶透明背景的 2D 圖。
+        /// 攝影機略高於牌並往下看一點點，這樣才看得到牌的頂面，
+        /// 平視的話就跟純平面沒兩樣了。
+        /// </summary>
+        class TileBaker
+        {
+            const int Width = 176;
+            const int Height = 240;
+            const float OrthographicSize = 0.168f;
+
+            readonly RenderTexture renderTexture;
+            readonly GameObject root;
+            readonly Camera camera;
+            readonly TileObject tile;
+
+            public TileBaker()
             {
-                var texture = faceTextures[tile];
-                faceSprites[tile] = Sprite.Create(
-                    texture, new Rect(0f, 0f, texture.width, texture.height),
-                    new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
+                renderTexture = new RenderTexture(Width, Height, 16, RenderTextureFormat.ARGB32);
+
+                root = new GameObject("TileSpriteBaker");
+                root.transform.position = BakeOrigin;
+
+                tile = TileObject.Create(root.transform);
+                tile.Place(Vector3.zero, Quaternion.identity);   // 牌面朝 +Z，也就是朝向攝影機
+
+                camera = new GameObject("BakeCamera").AddComponent<Camera>();
+                camera.transform.SetParent(root.transform, worldPositionStays: false);
+                camera.transform.localPosition = new Vector3(0f, 0.085f, 0.62f);
+                camera.transform.LookAt(root.transform.position + new Vector3(0f, -0.004f, 0f));
+
+                camera.orthographic = true;
+                camera.orthographicSize = OrthographicSize;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+
+                // 背景透明。萬一顯示卡沒有正確寫出 alpha，退而求其次也是牌身的米白色，
+                // 不會變成一塊黑框。
+                camera.backgroundColor = new Color(BodyColor.r, BodyColor.g, BodyColor.b, 0f);
+                camera.targetTexture = renderTexture;
+                camera.nearClipPlane = 0.05f;
+                camera.farClipPlane = 3f;
+                camera.enabled = false;   // 只在需要時手動 Render
             }
-            return faceSprites[tile];
+
+            public Sprite Bake(int tileId)
+            {
+                tile.SetTile(tileId);
+                camera.Render();
+
+                var previous = RenderTexture.active;
+                RenderTexture.active = renderTexture;
+
+                var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, mipChain: true)
+                {
+                    name = "TileSprite" + tileId,
+                    filterMode = FilterMode.Trilinear,
+                    wrapMode = TextureWrapMode.Clamp,
+                    anisoLevel = 4
+                };
+                texture.ReadPixels(new Rect(0f, 0f, Width, Height), 0, 0);
+                texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
+
+                RenderTexture.active = previous;
+
+                return Sprite.Create(texture, new Rect(0f, 0f, Width, Height),
+                                     new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
+            }
+
+            public void Dispose()
+            {
+                camera.targetTexture = null;
+                Object.Destroy(root);
+                renderTexture.Release();
+                Object.Destroy(renderTexture);
+            }
         }
 
         /// <summary>

@@ -81,9 +81,10 @@ namespace Mahjong.View.Board
             var player = state.Players[from];
             if (player == null || player.Discards.Count == 0) return false;
 
+            int displayIndex = DisplayIndexOf(from);
             int columns = BoardLayout.DiscardColumns(player.Discards.Count);
-            var local = BoardLayout.DiscardSlot(player.Discards.Count - 1, columns);
-            worldPosition = BoardLayout.SeatRotation(DisplayIndexOf(from)) * local;
+            var local = BoardLayout.DiscardSlot(player.Discards.Count - 1, columns, displayIndex);
+            worldPosition = BoardLayout.SeatRotation(displayIndex) * local;
             return true;
         }
 
@@ -208,7 +209,7 @@ namespace Mahjong.View.Board
             var player = state.Players[seat];
             if (player == null) return;
 
-            float meldWidth = MeasureMelds(player.Melds);
+            float meldWidth = MeasureMelds(player.Melds, displayIndex);
 
             // 自己的手牌由 2D 的 HandStrip 畫在畫面下緣，桌上不重複再畫一次
             var handList = seat == humanSeat ? EmptyHand : CollectHand(player);
@@ -242,27 +243,30 @@ namespace Mahjong.View.Board
             }
         }
 
-        static float MeasureMelds(List<Meld> melds)
+        static float MeasureMelds(List<Meld> melds, int displayIndex)
         {
             if (melds.Count == 0) return 0f;
 
+            float step = BoardLayout.MeldStepFor(displayIndex);
             float width = 0f;
             foreach (var meld in melds)
-                width += meld.Tiles().Length * BoardLayout.MeldStep + BoardLayout.MeldGroupGap;
+                width += meld.Tiles().Length * step + BoardLayout.MeldGroupGap;
             return width - BoardLayout.MeldGroupGap;
         }
 
         /// <summary>副露平躺攤在自己面前，被吃碰走的那張排在整組中間。</summary>
         void DrawMelds(List<Meld> melds, int displayIndex, float cursor)
         {
+            float step = BoardLayout.MeldStepFor(displayIndex);
+
             foreach (var meld in melds)
             {
                 var layout = MeldDisplay.Arrange(meld);
                 foreach (int tileId in layout.Tiles)
                 {
-                    var local = BoardLayout.MeldSlot(cursor + BoardLayout.MeldStep * 0.5f);
+                    var local = BoardLayout.MeldSlot(cursor + step * 0.5f);
                     PlaceTileFacingViewer(tileId, displayIndex, local);
-                    cursor += BoardLayout.MeldStep;
+                    cursor += step;
                 }
                 cursor += BoardLayout.MeldGroupGap;
             }
@@ -273,7 +277,7 @@ namespace Mahjong.View.Board
             int columns = BoardLayout.DiscardColumns(discards.Count);
             for (int i = 0; i < discards.Count; i++)
                 PlaceTileFacingViewer(discards[i], displayIndex,
-                                      BoardLayout.DiscardSlot(i, columns));
+                                      BoardLayout.DiscardSlot(i, columns, displayIndex));
         }
 
         void PlaceTile(int tileId, int displayIndex, Vector3 localPosition, Quaternion localRotation)

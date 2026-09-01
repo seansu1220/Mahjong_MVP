@@ -31,6 +31,9 @@ namespace Mahjong.View.Board
         public const float MeldStep = TileAssets.Width + 0.004f;
         public const float MeldGroupGap = 0.075f;
 
+        /// <summary>左右兩家排牌時，牌在排列方向上佔的是牌高而不是牌寬</summary>
+        public static float SideMeldStep => TileAssets.Height + 0.020f;
+
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
         public const float DiscardStepZ = TileAssets.Height + 0.060f;
@@ -165,6 +168,21 @@ namespace Mahjong.View.Board
         public static Vector3 MeldSlot(float x)
             => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);
 
+        /// <summary>左右兩家（畫面上的 1 與 3）</summary>
+        public static bool IsSideSeat(int displayIndex)
+            => displayIndex == 1 || displayIndex == 3;
+
+        /// <summary>
+        /// 排列間距要看牌在那個方向上實際佔多寬。
+        ///
+        /// 桌上的牌一律轉成正面朝向玩家，不再跟著座位旋轉，
+        /// 所以左右兩家沿著自己本地 X 排的時候，那個方向對應到的是世界 Z，
+        /// 牌在世界 Z 上佔的是「牌高」而不是「牌寬」。
+        /// 沿用牌寬的間距就會互相吃掉，牌看起來會連成一整條。
+        /// </summary>
+        public static float MeldStepFor(int displayIndex)
+            => IsSideSeat(displayIndex) ? SideMeldStep : MeldStep;
+
         /// <summary>
         /// 牌河要排幾欄。牌打多了就把每一列加寬，而不是往桌心再多排一列，
         /// 否則牌河會一路蔓延到桌子中間跟對家的牌河撞在一起。
@@ -172,12 +190,20 @@ namespace Mahjong.View.Board
         public static int DiscardColumns(int discardCount)
             => Mathf.Max(DiscardsPerRow, Mathf.CeilToInt(discardCount / (float)MaxDiscardRows));
 
-        public static Vector3 DiscardSlot(int index, int columns)
+        /// <summary>
+        /// 牌河的格位。左右兩家的兩個方向要對調——理由同 MeldStepFor：
+        /// 牌不再跟著座位轉，本地 X 對應到世界 Z，佔的是牌高。
+        /// </summary>
+        public static Vector3 DiscardSlot(int index, int columns, int displayIndex)
         {
+            bool side = IsSideSeat(displayIndex);
+            float alongStep = side ? DiscardStepZ : DiscardStepX;
+            float awayStep = side ? DiscardStepX : DiscardStepZ;
+
             int column = index % columns;
             int row = index / columns;
-            float x = (column - (columns - 1) * 0.5f) * DiscardStepX;
-            float z = -FirstDiscardRow + row * DiscardStepZ;
+            float x = (column - (columns - 1) * 0.5f) * alongStep;
+            float z = -FirstDiscardRow + row * awayStep;
             return new Vector3(x, TileAssets.Depth * 0.5f, z);
         }
 
