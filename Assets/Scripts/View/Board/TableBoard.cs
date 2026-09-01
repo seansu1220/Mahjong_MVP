@@ -216,12 +216,17 @@ namespace Mahjong.View.Board
             var meldList = ownSeat ? EmptyMelds : player.Melds;
 
             float meldWidth = MeasureMelds(meldList, displayIndex);
+            float rowWidth = handList.Count * BoardLayout.HandStep
+                           + (meldList.Count > 0 ? BoardLayout.HandToMeldGap + meldWidth : 0f);
 
-            float cursor = BoardLayout.HandRowStartX(handList.Count, meldWidth);
-            DrawHand(handList, displayIndex, RevealHands, ref cursor);
+            // 吃碰多了整列會變長，排不下就整列縮小，免得撞到隔壁那家或超出桌面
+            float scale = BoardLayout.RowScale(rowWidth);
+            float cursor = -rowWidth * scale * 0.5f;
 
-            if (meldList.Count > 0) cursor += BoardLayout.HandToMeldGap;
-            DrawMelds(meldList, displayIndex, cursor);
+            DrawHand(handList, displayIndex, RevealHands, scale, ref cursor);
+
+            if (meldList.Count > 0) cursor += BoardLayout.HandToMeldGap * scale;
+            DrawMelds(meldList, displayIndex, scale, cursor);
 
             DrawDiscards(player.Discards, displayIndex);
         }
@@ -237,14 +242,16 @@ namespace Mahjong.View.Board
             return tiles;
         }
 
-        void DrawHand(List<int> tiles, int displayIndex, bool faceUp, ref float cursor)
+        void DrawHand(List<int> tiles, int displayIndex, bool faceUp, float scale, ref float cursor)
         {
+            float step = BoardLayout.HandStep * scale;
+
             foreach (int tileId in tiles)
             {
-                var local = BoardLayout.HandSlot(cursor + BoardLayout.HandStep * 0.5f);
+                var local = BoardLayout.HandSlot(cursor + step * 0.5f, scale);
                 PlaceTile(faceUp ? tileId : TileObject.NoTile, displayIndex, local,
-                          BoardLayout.StandingFacingOwner);
-                cursor += BoardLayout.HandStep;
+                          BoardLayout.StandingFacingOwner, scale);
+                cursor += step;
             }
         }
 
@@ -260,20 +267,20 @@ namespace Mahjong.View.Board
         }
 
         /// <summary>副露平躺攤在自己面前，被吃碰走的那張排在整組中間。</summary>
-        void DrawMelds(List<Meld> melds, int displayIndex, float cursor)
+        void DrawMelds(List<Meld> melds, int displayIndex, float scale, float cursor)
         {
-            float step = BoardLayout.MeldStepFor(displayIndex);
+            float step = BoardLayout.MeldStepFor(displayIndex) * scale;
 
             foreach (var meld in melds)
             {
                 var layout = MeldDisplay.Arrange(meld);
                 foreach (int tileId in layout.Tiles)
                 {
-                    var local = BoardLayout.MeldSlot(cursor + step * 0.5f);
-                    PlaceTileFacingViewer(tileId, displayIndex, local);
+                    var local = BoardLayout.MeldSlot(cursor + step * 0.5f, scale);
+                    PlaceTileFacingViewer(tileId, displayIndex, local, scale);
                     cursor += step;
                 }
-                cursor += BoardLayout.MeldGroupGap;
+                cursor += BoardLayout.MeldGroupGap * scale;
             }
         }
 
@@ -285,7 +292,8 @@ namespace Mahjong.View.Board
                                       BoardLayout.DiscardSlot(i, columns, displayIndex));
         }
 
-        void PlaceTile(int tileId, int displayIndex, Vector3 localPosition, Quaternion localRotation)
+        void PlaceTile(int tileId, int displayIndex, Vector3 localPosition,
+                       Quaternion localRotation, float scale)
         {
             Vector3 position;
             Quaternion rotation;
@@ -293,6 +301,7 @@ namespace Mahjong.View.Board
 
             var tile = TakeTile();
             tile.SetTile(tileId);
+            tile.SetScale(scale);
             tile.Place(position, rotation);
         }
 
@@ -301,12 +310,14 @@ namespace Mahjong.View.Board
         /// 照真實牌桌讓每家的牌朝向自己的話，對家打出的牌對玩家來說是上下顛倒的，
         /// 根本看不出打了什麼。牌河與副露都是要給所有人看的資訊，可讀性優先。
         /// </summary>
-        void PlaceTileFacingViewer(int tileId, int displayIndex, Vector3 localPosition)
+        void PlaceTileFacingViewer(int tileId, int displayIndex, Vector3 localPosition,
+                                   float scale = 1f)
         {
             var position = BoardLayout.SeatRotation(displayIndex) * localPosition;
 
             var tile = TakeTile();
             tile.SetTile(tileId);
+            tile.SetScale(scale);
             tile.Place(position, BoardLayout.LyingFaceUp);
         }
 

@@ -48,6 +48,12 @@ namespace Mahjong.View.Board
         /// 不然牌背貼在桌面上會整片糊在一起分不出來。
         /// </summary>
         public static readonly Color BackColor = new Color(0.20f, 0.63f, 0.40f);
+
+        /// <summary>牌面四周那一圈細邊的顏色。挨著排的兩張牌就靠它分開。</summary>
+        public static readonly Color FaceEdgeColor = new Color(0.58f, 0.62f, 0.58f);
+
+        /// <summary>細邊佔牌面寬度的比例</summary>
+        const float EdgeThicknessRatio = 0.045f;
         static readonly Color FaceBackground = new Color(0.985f, 0.978f, 0.955f);
 
         static readonly Color ManColor = new Color(0.70f, 0.13f, 0.13f);
@@ -537,6 +543,38 @@ namespace Mahjong.View.Board
                                         new Vector2(0f, FaceTextureHeight * 0.20f));
                 suitLabel = CreateLabel(canvasRect, "Suit", Mathf.RoundToInt(FaceTextureHeight * 0.30f),
                                         new Vector2(0f, -FaceTextureHeight * 0.22f));
+
+                CreateEdges(canvasRect);
+            }
+
+            /// <summary>
+            /// 牌面四周烘焙一圈深色細邊。
+            ///
+            /// 桌上的牌是挨著排的，兩張牌的頂面直接相鄰；沒有這圈邊，
+            /// 一整排白色牌面會連成一塊看不出張數。有了它，
+            /// 兩張牌的邊並在一起就是一條清楚的溝，跟真牌的凹槽是同一個效果。
+            /// </summary>
+            static void CreateEdges(RectTransform canvasRect)
+            {
+                float thickness = FaceTextureWidth * EdgeThicknessRatio;
+                float halfWidth = FaceTextureWidth * 0.5f;
+                float halfHeight = FaceTextureHeight * 0.5f;
+
+                CreateEdge(canvasRect, "EdgeTop", new Vector2(0f, halfHeight - thickness * 0.5f),
+                           new Vector2(FaceTextureWidth, thickness));
+                CreateEdge(canvasRect, "EdgeBottom", new Vector2(0f, -halfHeight + thickness * 0.5f),
+                           new Vector2(FaceTextureWidth, thickness));
+                CreateEdge(canvasRect, "EdgeLeft", new Vector2(-halfWidth + thickness * 0.5f, 0f),
+                           new Vector2(thickness, FaceTextureHeight));
+                CreateEdge(canvasRect, "EdgeRight", new Vector2(halfWidth - thickness * 0.5f, 0f),
+                           new Vector2(thickness, FaceTextureHeight));
+            }
+
+            static void CreateEdge(RectTransform parent, string name, Vector2 position, Vector2 size)
+            {
+                var edge = UIFactory.CreateImage(name, parent, FaceEdgeColor, rounded: false);
+                UIFactory.Anchor(edge.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                                 position, size);
             }
 
             static Text CreateLabel(RectTransform parent, string name, int fontSize, Vector2 position)

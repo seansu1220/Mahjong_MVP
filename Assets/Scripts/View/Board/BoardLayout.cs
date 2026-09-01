@@ -31,46 +31,26 @@ namespace Mahjong.View.Board
         public const float MeldStep = TileAssets.Width + 0.004f;
         public const float MeldGroupGap = 0.075f;
 
-        /// <summary>
-        /// 左右兩家的副露是往畫面深處排的，理由同 DiscardStepAway。
-        /// </summary>
-        public static float SideMeldStep => StepShowingSeam(MeldSeamHeight);
+        /// <summary>左右兩家的副露也是往畫面深處排的，理由同 DiscardStepAway</summary>
+        public static float SideMeldStep => TileAssets.Height + TouchingGap;
 
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
 
-        // 綠邊留多少是有上下限的：
-        //   太窄 → 綠邊被前面那張蓋住，兩張牌糊成一條
-        //   太寬 → 中間露出桌面，牌看起來散開了
-        // 這裡取靠近下限的值：牌彼此挨著，但看得出是兩張。
-        // 上限還要留餘裕給透視——近端的牌會比這裡的正交估算再散開一些。
-
-        /// <summary>牌河：牌與牌之間在畫面上要露出來的綠邊有多高</summary>
-        const float DiscardSeamHeight = 0.014f;
-
-        /// <summary>副露是一組一組緊靠著的，綠邊再細一點</summary>
-        const float MeldSeamHeight = 0.006f;
+        /// <summary>讓兩張牌剛好不共面，避免邊界閃爍；小到看不出來</summary>
+        const float TouchingGap = 0.002f;
 
         /// <summary>
-        /// 往畫面深處排的那個方向要留多少間距。
+        /// 往畫面深處排的那個方向：讓兩張牌**剛好挨著**。
         ///
-        /// 這個方向**不能照牌的實際尺寸算**。攝影機是斜著往下看的，
-        /// 後面那張牌的前緣會頂上來蓋住前面那張牌的遠端，
-        /// 牌與牌的界線就落在「後面那張的前緣」上。
+        /// 試過拉開到看得見桌面，反而顯得散。而且攝影機是斜著往下看的，
+        /// 只要間距超過牌高一點點，後面那張牌的前緣就會從前面那張的頂面上方
+        /// 冒出一截白色——那截跟牌面同色，非但沒分開反而更糊。
         ///
-        /// 而前緣由上而下是「白色牌身 58% + 綠色牌背 42%」。
-        /// 只露出白的那段，它會跟前面那張的白色牌面連成一片，看不出是兩張牌；
-        /// 露到綠的那段，界線就一清二楚。真實牌桌上的牌本來就是互相挨著的，
-        /// 硬把牌拉開到能看見桌面反而顯得散。
-        ///
-        /// 所以間距 = 牌高 + 白色那段的投影 + 想露出的綠邊，
-        /// 後兩項再除以 sin(俯角) 換回世界座標。視角改了它會自己跟著變。
+        /// 貼著排的話兩張牌的頂面直接相鄰，界線交給牌面四周烘焙好的深色邊框
+        /// （見 TileAssets.FaceEdgeColor），兩張牌的邊框並在一起就是一條清楚的溝。
         /// </summary>
-        public static float DiscardStepAway => StepShowingSeam(DiscardSeamHeight);
-
-        static float StepShowingSeam(float seamHeight)
-            => TileAssets.Height
-               + (FrontEdgeScreenHeight * TileAssets.FrontDepthRatio + seamHeight) / ViewSin;
+        public static float DiscardStepAway => TileAssets.Height + TouchingGap;
 
         /// <summary>
         /// 牌山的牌畫得比場上的牌小一號。
@@ -101,7 +81,10 @@ namespace Mahjong.View.Board
 
         // ---- 各區塊之間的留白 ----
         const float WallCornerGap = 0.03f;
-        const float WallToHandGap = 0.14f;
+        const float WallToHandGap = 0.20f;
+
+        /// <summary>相鄰兩家的手牌列在轉角要留的空隙</summary>
+        const float RowCornerGap = 0.04f;
         const float FirstDiscardInset = 0.16f;
 
         // ------------------------------------------------------------
@@ -150,17 +133,6 @@ namespace Mahjong.View.Board
 
         public const float CameraFieldOfView = 46f;
 
-        /// <summary>攝影機的視線方向</summary>
-        static Vector3 ViewDirection => (CameraTarget - CameraPosition).normalized;
-
-        /// <summary>俯角的 sin。直接從視線方向取，不必真的去算角度。</summary>
-        static float ViewSin => Mathf.Max(-ViewDirection.y, 0.01f);
-
-        /// <summary>俯角的 cos</summary>
-        static float ViewCos => new Vector2(ViewDirection.x, ViewDirection.z).magnitude;
-
-        /// <summary>平躺的牌，前緣在畫面上佔多高（白色那段與綠色那段合起來）</summary>
-        static float FrontEdgeScreenHeight => TileAssets.Depth * ViewCos;
 
         // ------------------------------------------------------------
         // 基本朝向
@@ -199,22 +171,28 @@ namespace Mahjong.View.Board
         // ------------------------------------------------------------
 
         /// <summary>
-        /// 手牌與副露排在同一列：手牌在左、副露接在右邊，整列置中。
-        /// 每吃碰一組手牌就少三張，所以整列寬度大致不變，跟真的打牌一樣。
+        /// 一列（手牌 + 副露）最多能多寬。
+        ///
+        /// 四家的手牌列圍成一個方框，超過這個寬度相鄰兩家就會在轉角撞在一起。
+        /// 手牌是立著的、副露是平躺的，平躺佔得比較多，所以用牌高抓保守值。
         /// </summary>
-        public static float HandRowStartX(int handCount, float meldsWidth)
-        {
-            float handWidth = handCount * HandStep;
-            float total = handWidth + (meldsWidth > 0f ? HandToMeldGap + meldsWidth : 0f);
-            return -total * 0.5f;
-        }
+        public static float MaxRowWidth =>
+            2f * (HandDistance - TileAssets.Height * 0.5f - RowCornerGap);
 
-        public static Vector3 HandSlot(float x)
-            => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
+        /// <summary>
+        /// 一列排不下就整列縮小，而不是讓它撞到隔壁那家。
+        /// 副露一組要三張，吃碰多了那一列會比原本的手牌長得多，
+        /// 固定尺寸一定會爆版；縮小是唯一不會出事的做法。
+        /// </summary>
+        public static float RowScale(float rowWidth)
+            => rowWidth <= MaxRowWidth ? 1f : MaxRowWidth / rowWidth;
+
+        public static Vector3 HandSlot(float x, float scale)
+            => new Vector3(x, TileAssets.Height * scale * 0.5f, -HandDistance);
 
         /// <summary>副露跟手牌同一列，只是平躺著</summary>
-        public static Vector3 MeldSlot(float x)
-            => new Vector3(x, TileAssets.Depth * 0.5f, -HandDistance);
+        public static Vector3 MeldSlot(float x, float scale)
+            => new Vector3(x, TileAssets.Depth * scale * 0.5f, -HandDistance);
 
         /// <summary>左右兩家（畫面上的 1 與 3）</summary>
         public static bool IsSideSeat(int displayIndex)

@@ -15,10 +15,11 @@ namespace Mahjong.View
     // 每一張牌就是「桌上那張 3D 牌拍下來的照片」（TileAssets.TileSprite），
     // 頂面、側面與光影都是真的，不是用色塊在 UI 裡拼出來的假立體。
     //
-    // 吃碰槓出來的副露接在手牌右邊，同一列顯示。
+    // 吃碰槓出來的牌排在整列的最左邊，橫躺著。
     // 它們原本畫在 3D 桌上自己那一側，但桌子近端剛好落在攝影機視野邊緣，
     // 玩家根本看不到自己吃了什麼；放進這一列就永遠看得見。
-    // 副露畫得比手牌小一號，也不能點——一眼就知道那幾張已經定了。
+    // 橫躺 + 小一號 + 不能點，跟直立的手牌一眼分得出來，
+    // 也符合真實牌桌上吃碰的牌是攤平放著的樣子。
     //
     // 互動：點一下選取（牌會抬起來），再點同一張才打出。
     // 選取記的是「哪一張」而不是「哪一種」——手上有兩張五萬時，
@@ -29,16 +30,18 @@ namespace Mahjong.View
     {
         static readonly Vector2 TileSize = new Vector2(94f, 128f);
         const float TileGap = 6f;
-        const float DrawnTileGap = 34f;    // 剛摸進來的那張跟其他牌隔開
+        const float DrawnTileGap = 76f;    // 剛摸進來的那張明顯跟其他牌隔開
         const float SelectedLift = 26f;
         const float ClaimLift = 13f;
 
-        /// <summary>副露的牌比手牌小一號，看得出來是已經定下來的</summary>
-        const float MeldScale = 0.86f;
+        /// <summary>吃碰的牌比手牌小一號，看得出來是已經定下來的</summary>
+        const float MeldScale = 0.80f;
 
+        /// <summary>旋轉前的尺寸；橫躺之後畫面上的寬高互換</summary>
         static readonly Vector2 MeldTileSize = TileSize * MeldScale;
-        const float HandToMeldGap = 36f;   // 手牌與副露之間
-        const float MeldGroupGap = 18f;    // 副露每一組之間
+
+        const float MeldToHandGap = 44f;   // 吃碰的牌與手牌之間
+        const float MeldGroupGap = 16f;    // 吃碰的每一組之間
 
         // 牌本身已經是拍好的圖，這裡只是替它上色。
         // 底色是白的，乘上去才不會把牌面染掉。
@@ -115,16 +118,17 @@ namespace Mahjong.View
             float handWidth = ordered.Count * TileSize.x + Mathf.Max(0, ordered.Count - 1) * TileGap
                             + (hasDrawnTile ? DrawnTileGap : 0f);
             float meldsWidth = MeasureMelds(player.Melds);
-            float total = handWidth + (meldsWidth > 0f ? HandToMeldGap + meldsWidth : 0f);
+            float total = handWidth + (meldsWidth > 0f ? meldsWidth + MeldToHandGap : 0f);
 
             float cursor = -total * 0.5f;
-            LayoutHand(ordered, hasDrawnTile, ref cursor);
 
             if (meldsWidth > 0f)
             {
-                cursor += HandToMeldGap;
                 LayoutMelds(player.Melds, cursor);
+                cursor += meldsWidth + MeldToHandGap;
             }
+
+            LayoutHand(ordered, hasDrawnTile, ref cursor);
         }
 
         void LayoutHand(List<int> ordered, bool hasDrawnTile, ref float cursor)
@@ -146,7 +150,7 @@ namespace Mahjong.View
 
             float width = 0f;
             foreach (var meld in melds)
-                width += meld.Tiles().Length * (MeldTileSize.x + TileGap) + MeldGroupGap;
+                width += meld.Tiles().Length * MeldTileAdvance + MeldGroupGap;
             return width - TileGap - MeldGroupGap;
         }
 
@@ -159,19 +163,26 @@ namespace Mahjong.View
                 foreach (int tileId in layout.Tiles)
                 {
                     CreateMeldTile(tileId, cursor);
-                    cursor += MeldTileSize.x + TileGap;
+                    cursor += MeldTileAdvance;
                 }
                 cursor += MeldGroupGap;
             }
         }
+
+        /// <summary>橫躺之後，畫面上的寬度是原本的高度</summary>
+        static float MeldTileAdvance => MeldTileSize.y + TileGap;
 
         void CreateMeldTile(int tile, float x)
         {
             var body = UIFactory.CreateImage("MeldTile", row, MeldColor, rounded: false);
             body.sprite = Board.TileAssets.TileSprite(tile);
             body.preserveAspect = true;
-            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f),
-                             new Vector2(x, 0f), MeldTileSize);
+
+            // 轉 90 度之後寬高互換，所以要用中心對位，不然轉完會跑掉
+            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f),
+                             new Vector2(x + MeldTileSize.y * 0.5f, MeldTileSize.x * 0.5f),
+                             MeldTileSize);
+            body.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 90f);
 
             meldTiles.Add(body.gameObject);
         }
