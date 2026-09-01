@@ -31,12 +31,32 @@ namespace Mahjong.View.Board
         public const float MeldStep = TileAssets.Width + 0.004f;
         public const float MeldGroupGap = 0.075f;
 
-        /// <summary>左右兩家排牌時，牌在排列方向上佔的是牌高而不是牌寬</summary>
-        public static float SideMeldStep => TileAssets.Height + 0.020f;
+        /// <summary>
+        /// 左右兩家的副露是往畫面深處排的，理由同 DiscardStepAway。
+        /// 副露是一組一組緊靠著的，縫比牌河小一點就夠。
+        /// </summary>
+        public static float SideMeldStep => (LyingTileScreenHeight + 0.010f) / ViewSin;
 
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
-        public const float DiscardStepZ = TileAssets.Height + 0.060f;
+
+        /// <summary>兩張牌之間在畫面上至少要看得到這麼寬的縫</summary>
+        const float DiscardScreenGap = 0.030f;
+
+        /// <summary>
+        /// 往畫面深處排的那個方向要留多少間距。
+        ///
+        /// 這個方向**不能照牌的實際尺寸算**。攝影機是斜著往下看的，
+        /// 一張平躺的牌在畫面上佔的高度是「牌高的投影 + 牌厚的投影」；
+        /// 只留牌高的間距的話，後面那張牌的前緣會頂上來蓋住前面那張牌的遠端，
+        /// 兩張之間看不到桌面，整排就糊成一條。
+        ///
+        /// 所以間距由攝影機俯角反推：畫面上要空出 DiscardScreenGap 的縫，
+        /// 世界座標就得走 (牌的畫面高度 + 縫) / sin(俯角)。
+        /// 之後調視角，間距會自己跟著變。
+        /// </summary>
+        public static float DiscardStepAway =>
+            (LyingTileScreenHeight + DiscardScreenGap) / ViewSin;
 
         /// <summary>
         /// 牌山的牌畫得比場上的牌小一號。
@@ -107,13 +127,29 @@ namespace Mahjong.View.Board
         // ---- 攝影機（想調整視角就改這三個比例）----
         // 自己的手牌是 2D 畫在畫面下緣的，桌面近端不必留太多空間，
         // 所以視線只稍微往前壓，鏡頭盡量拉近讓桌上的牌看得清楚。
+        //
+        // 俯角不能太平：越平，平躺的牌在畫面上被壓得越扁，
+        // 往畫面深處排的牌就越容易被後面那張蓋住（見 DiscardStepAway）。
         public static Vector3 CameraPosition =>
-            new Vector3(0f, TableSize * 0.55f, -TableSize * 0.70f);
+            new Vector3(0f, TableSize * 0.68f, -TableSize * 0.55f);
 
         public static Vector3 CameraTarget =>
             new Vector3(0f, 0f, -TableSize * 0.04f);
 
         public const float CameraFieldOfView = 46f;
+
+        /// <summary>攝影機的視線方向</summary>
+        static Vector3 ViewDirection => (CameraTarget - CameraPosition).normalized;
+
+        /// <summary>俯角的 sin。直接從視線方向取，不必真的去算角度。</summary>
+        static float ViewSin => Mathf.Max(-ViewDirection.y, 0.01f);
+
+        /// <summary>俯角的 cos</summary>
+        static float ViewCos => new Vector2(ViewDirection.x, ViewDirection.z).magnitude;
+
+        /// <summary>一張平躺的牌在畫面上佔多高：牌高與牌厚各自的投影相加</summary>
+        static float LyingTileScreenHeight =>
+            TileAssets.Height * ViewSin + TileAssets.Depth * ViewCos;
 
         // ------------------------------------------------------------
         // 基本朝向
@@ -177,18 +213,30 @@ namespace Mahjong.View.Board
         ///
         /// 桌上的牌一律轉成正面朝向玩家，不再跟著座位旋轉，
         /// 所以左右兩家沿著自己本地 X 排的時候，那個方向對應到的是世界 Z，
-        /// 牌在世界 Z 上佔的是「牌高」而不是「牌寬」。
-        /// 沿用牌寬的間距就會互相吃掉，牌看起來會連成一整條。
+        /// 也就是往畫面深處排——要用 DiscardStepAway 那套算法，
+        /// 沿用牌寬的間距牌會互相遮住，看起來連成一整條。
         /// </summary>
         public static float MeldStepFor(int displayIndex)
             => IsSideSeat(displayIndex) ? SideMeldStep : MeldStep;
 
         /// <summary>
-        /// 牌河要排幾欄。牌打多了就把每一列加寬，而不是往桌心再多排一列，
-        /// 否則牌河會一路蔓延到桌子中間跟對家的牌河撞在一起。
+        /// 牌河要排幾欄。
+        ///
+        /// 上下兩家沿著畫面橫向排，間距小，牌打多了就把每一列加寬，
+        /// 而不是往桌心再多排一列，否則牌河會蔓延到桌中間撞在一起。
+        ///
+        /// 左右兩家是沿著畫面深處排的，間距大得多（DiscardStepAway），
+        /// 欄數固定，再多就排到牌山上去了；牌多了往桌心多排一列，
+        /// 那個方向對他們來說反而是便宜的。
         /// </summary>
-        public static int DiscardColumns(int discardCount)
-            => Mathf.Max(DiscardsPerRow, Mathf.CeilToInt(discardCount / (float)MaxDiscardRows));
+        public static int DiscardColumns(int discardCount, int displayIndex)
+        {
+            if (IsSideSeat(displayIndex)) return SideDiscardColumns;
+            return Mathf.Max(DiscardsPerRow, Mathf.CeilToInt(discardCount / (float)MaxDiscardRows));
+        }
+
+        /// <summary>左右兩家的牌河固定幾欄：再多就會排到牌山上</summary>
+        public const int SideDiscardColumns = 6;
 
         /// <summary>
         /// 牌河的格位。左右兩家的兩個方向要對調——理由同 MeldStepFor：
@@ -197,8 +245,8 @@ namespace Mahjong.View.Board
         public static Vector3 DiscardSlot(int index, int columns, int displayIndex)
         {
             bool side = IsSideSeat(displayIndex);
-            float alongStep = side ? DiscardStepZ : DiscardStepX;
-            float awayStep = side ? DiscardStepX : DiscardStepZ;
+            float alongStep = side ? DiscardStepAway : DiscardStepX;
+            float awayStep = side ? DiscardStepX : DiscardStepAway;
 
             int column = index % columns;
             int row = index / columns;

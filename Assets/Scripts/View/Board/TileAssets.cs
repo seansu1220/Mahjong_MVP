@@ -125,24 +125,41 @@ namespace Mahjong.View.Board
         }
 
         /// <summary>
-        /// 把一張 3D 牌拍成帶透明背景的 2D 圖。
+        /// 把一張 3D 牌拍成去背的 2D 圖。
         /// 攝影機略高於牌並往下看一點點，這樣才看得到牌的頂面，
         /// 平視的話就跟純平面沒兩樣了。
         /// </summary>
         class TileBaker
         {
-            const int Width = 176;
-            const int Height = 240;
-            const float OrthographicSize = 0.168f;
+            const int TextureWidth = 176;
+            const int TextureHeight = 240;
+
+            /// <summary>攝影機往下看幾度。太大牌面會被壓扁，太小就看不到頂面。</summary>
+            const float TiltDegrees = 11f;
+            const float Distance = 0.7f;
+
+            /// <summary>畫面四周留的空白比例</summary>
+            const float FramePadding = 1.05f;
 
             readonly RenderTexture renderTexture;
             readonly GameObject root;
             readonly Camera camera;
             readonly TileObject tile;
+            readonly Color32[] onBlack;
+            readonly Color32[] onWhite;
+            readonly Texture2D scratch;
 
             public TileBaker()
             {
-                renderTexture = new RenderTexture(Width, Height, 16, RenderTextureFormat.ARGB32);
+                renderTexture = new RenderTexture(TextureWidth, TextureHeight, 16, RenderTextureFormat.ARGB32)
+                {
+                    antiAliasing = 4   // 牌的邊緣才不會有鋸齒
+                };
+
+                onBlack = new Color32[TextureWidth * TextureHeight];
+                onWhite = new Color32[TextureWidth * TextureHeight];
+                scratch = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32,
+                                        mipChain: false);
 
                 root = new GameObject("TileSpriteBaker");
                 root.transform.position = BakeOrigin;
@@ -152,49 +169,104 @@ namespace Mahjong.View.Board
 
                 camera = new GameObject("BakeCamera").AddComponent<Camera>();
                 camera.transform.SetParent(root.transform, worldPositionStays: false);
-                camera.transform.localPosition = new Vector3(0f, 0.085f, 0.62f);
-                camera.transform.LookAt(root.transform.position + new Vector3(0f, -0.004f, 0f));
+
+                float tilt = TiltDegrees * Mathf.Deg2Rad;
+                camera.transform.localPosition =
+                    new Vector3(0f, Distance * Mathf.Sin(tilt), Distance * Mathf.Cos(tilt));
+                camera.transform.LookAt(root.transform.position);
 
                 camera.orthographic = true;
-                camera.orthographicSize = OrthographicSize;
+                camera.orthographicSize = FrameHalfHeight(tilt) * FramePadding;
                 camera.clearFlags = CameraClearFlags.SolidColor;
-
-                // 背景透明。萬一顯示卡沒有正確寫出 alpha，退而求其次也是牌身的米白色，
-                // 不會變成一塊黑框。
-                camera.backgroundColor = new Color(BodyColor.r, BodyColor.g, BodyColor.b, 0f);
                 camera.targetTexture = renderTexture;
                 camera.nearClipPlane = 0.05f;
                 camera.farClipPlane = 3f;
                 camera.enabled = false;   // 只在需要時手動 Render
             }
 
+            /// <summary>
+            /// 斜著看的時候，牌在畫面上佔的高度是牌高與牌厚各自的投影相加。
+            /// 由它決定取景範圍，牌才會剛好填滿整張圖。
+            /// </summary>
+            static float FrameHalfHeight(float tilt)
+                => (TileAssets.Height * Mathf.Cos(tilt) + TileAssets.Depth * Mathf.Sin(tilt)) * 0.5f;
+
             public Sprite Bake(int tileId)
             {
                 tile.SetTile(tileId);
-                camera.Render();
 
-                var previous = RenderTexture.active;
-                RenderTexture.active = renderTexture;
+                // 拍兩次：一次黑底、一次白底。
+                // 有牌擋著的地方兩張一模一樣，沒擋到的地方差整整一個黑白，
+                // 兩張一減就得到精確的去背遮罩——不必去猜著色器有沒有正確寫出 alpha。
+                RenderOnto(Color.black, onBlack);
+                RenderOnto(Color.white, onWhite);
 
-                var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, mipChain: true)
+                var texture = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32, mipChain: true)
                 {
                     name = "TileSprite" + tileId,
                     filterMode = FilterMode.Trilinear,
                     wrapMode = TextureWrapMode.Clamp,
                     anisoLevel = 4
                 };
-                texture.ReadPixels(new Rect(0f, 0f, Width, Height), 0, 0);
+                texture.SetPixels32(Composite());
                 texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
 
-                RenderTexture.active = previous;
-
-                return Sprite.Create(texture, new Rect(0f, 0f, Width, Height),
+                return Sprite.Create(texture, new Rect(0f, 0f, TextureWidth, TextureHeight),
                                      new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
+            }
+
+            void RenderOnto(Color background, Color32[] target)
+            {
+                camera.backgroundColor = background;
+                camera.Render();
+
+                var previous = RenderTexture.active;
+                RenderTexture.active = renderTexture;
+
+                scratch.ReadPixels(new Rect(0f, 0f, TextureWidth, TextureHeight), 0, 0);
+                scratch.Apply(updateMipmaps: false);
+                scratch.GetPixels32().CopyTo(target, 0);
+
+                RenderTexture.active = previous;
+            }
+
+            /// <summary>
+            /// 由黑底與白底兩張算出每個像素的透明度與原色。
+            /// 覆蓋率 a 的像素：黑底得到 a·C、白底得到 a·C + (1-a)，
+            /// 兩者一減就是 1-a，再把顏色除回去即可。
+            /// </summary>
+            Color32[] Composite()
+            {
+                var result = new Color32[TextureWidth * TextureHeight];
+                var fallback = (Color32)BodyColor;
+
+                for (int i = 0; i < result.Length; i++)
+                {
+                    float difference = Mathf.Max(
+                        Mathf.Max(onWhite[i].r - onBlack[i].r, onWhite[i].g - onBlack[i].g),
+                        onWhite[i].b - onBlack[i].b) / 255f;
+
+                    float alpha = Mathf.Clamp01(1f - difference);
+                    if (alpha < 0.004f)
+                    {
+                        // 透明處仍填牌身色，縮圖時邊緣才不會滲出黑邊
+                        result[i] = new Color32(fallback.r, fallback.g, fallback.b, 0);
+                        continue;
+                    }
+
+                    result[i] = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(onBlack[i].r / alpha), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(onBlack[i].g / alpha), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(onBlack[i].b / alpha), 0, 255),
+                        (byte)Mathf.RoundToInt(alpha * 255f));
+                }
+                return result;
             }
 
             public void Dispose()
             {
                 camera.targetTexture = null;
+                Object.Destroy(scratch);
                 Object.Destroy(root);
                 renderTexture.Release();
                 Object.Destroy(renderTexture);

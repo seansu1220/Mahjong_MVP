@@ -82,7 +82,7 @@ namespace Mahjong.View.Board
             if (player == null || player.Discards.Count == 0) return false;
 
             int displayIndex = DisplayIndexOf(from);
-            int columns = BoardLayout.DiscardColumns(player.Discards.Count);
+            int columns = BoardLayout.DiscardColumns(player.Discards.Count, displayIndex);
             var local = BoardLayout.DiscardSlot(player.Discards.Count - 1, columns, displayIndex);
             worldPosition = BoardLayout.SeatRotation(displayIndex) * local;
             return true;
@@ -274,7 +274,7 @@ namespace Mahjong.View.Board
 
         void DrawDiscards(List<int> discards, int displayIndex)
         {
-            int columns = BoardLayout.DiscardColumns(discards.Count);
+            int columns = BoardLayout.DiscardColumns(discards.Count, displayIndex);
             for (int i = 0; i < discards.Count; i++)
                 PlaceTileFacingViewer(discards[i], displayIndex,
                                       BoardLayout.DiscardSlot(i, columns, displayIndex));
