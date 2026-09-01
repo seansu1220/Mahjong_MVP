@@ -23,9 +23,6 @@ namespace Mahjong.View.Board
     {
         public const int NoTile = GameState.NoTile;
 
-        /// <summary>白色牌身佔整體厚度的比例，其餘是綠色牌背</summary>
-        const float FrontDepthRatio = 0.58f;
-
         /// <summary>牌面比牌身小的比例，露出來的白邊就是牌身</summary>
         const float PanelInset = 0.86f;
 
@@ -69,7 +66,7 @@ namespace Mahjong.View.Board
             var collider = gameObject.AddComponent<BoxCollider>();
             collider.size = new Vector3(TileAssets.Width, TileAssets.Height, TileAssets.Depth);
 
-            float frontDepth = TileAssets.Depth * FrontDepthRatio;
+            float frontDepth = TileAssets.Depth * TileAssets.FrontDepthRatio;
             float backDepth = TileAssets.Depth - frontDepth;
 
             // 兩塊前後接在一起：前半塊白、後半塊綠，接縫在厚度中間偏後

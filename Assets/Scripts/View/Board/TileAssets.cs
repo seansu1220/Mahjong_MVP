@@ -23,6 +23,16 @@ namespace Mahjong.View.Board
         public const float Height = 0.260f;
         public const float Depth = 0.150f;
 
+        /// <summary>
+        /// 白色牌身佔整體厚度的比例，其餘是綠色牌背。
+        /// 排版要用它算牌側面露出多少綠邊（見 BoardLayout.DiscardStepAway），
+        /// 所以放在這裡跟其他尺寸一起管。
+        /// </summary>
+        public const float FrontDepthRatio = 0.58f;
+
+        /// <summary>拍照用的環境光。與牌桌上的環境光同一個調子，拍出來才不會色差。</summary>
+        static readonly Color BakeAmbient = new Color(0.42f, 0.45f, 0.43f);
+
         /// <summary>牌面貼圖的解析度</summary>
         const int FaceTextureWidth = 192;
         const int FaceTextureHeight = 248;
@@ -149,6 +159,9 @@ namespace Mahjong.View.Board
             readonly Color32[] onWhite;
             readonly Texture2D scratch;
 
+            readonly UnityEngine.Rendering.AmbientMode previousAmbientMode;
+            readonly Color previousAmbient;
+
             public TileBaker()
             {
                 renderTexture = new RenderTexture(TextureWidth, TextureHeight, 16, RenderTextureFormat.ARGB32)
@@ -182,6 +195,37 @@ namespace Mahjong.View.Board
                 camera.nearClipPlane = 0.05f;
                 camera.farClipPlane = 3f;
                 camera.enabled = false;   // 只在需要時手動 Render
+
+                previousAmbientMode = RenderSettings.ambientMode;
+                previousAmbient = RenderSettings.ambientLight;
+                RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                RenderSettings.ambientLight = BakeAmbient;
+
+                CreateKeyLight();
+            }
+
+            /// <summary>
+            /// 拍照要自備燈光。
+            ///
+            /// 牌桌的燈是從斜上方打下來的，桌上的牌平躺、正面朝天，照得剛剛好；
+            /// 但拍照時牌是立著的、正面朝著攝影機，那盞燈等於從牌的背後照過來，
+            /// 正面只剩環境光——拍出來就是一張灰牌。
+            ///
+            /// 所以在攝影機這一側補一盞主燈，正面才會跟桌上的牌一樣亮。
+            /// 燈掛在拍照用的根物件底下，拍完就跟著一起銷毀。
+            /// </summary>
+            void CreateKeyLight()
+            {
+                var lightObject = new GameObject("BakeKeyLight");
+                lightObject.transform.SetParent(root.transform, worldPositionStays: false);
+
+                var light = lightObject.AddComponent<Light>();
+                light.type = LightType.Directional;
+                // 從攝影機那一側略高處往下照，牌的頂面也帶到一點
+                light.transform.rotation = Quaternion.Euler(28f, 200f, 0f);
+                light.intensity = 0.95f;
+                light.color = new Color(1f, 0.98f, 0.94f);
+                light.shadows = LightShadows.None;
             }
 
             /// <summary>
@@ -265,6 +309,9 @@ namespace Mahjong.View.Board
 
             public void Dispose()
             {
+                RenderSettings.ambientMode = previousAmbientMode;
+                RenderSettings.ambientLight = previousAmbient;
+
                 camera.targetTexture = null;
                 Object.Destroy(scratch);
                 Object.Destroy(root);

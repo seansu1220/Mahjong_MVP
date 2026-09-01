@@ -33,30 +33,38 @@ namespace Mahjong.View.Board
 
         /// <summary>
         /// 左右兩家的副露是往畫面深處排的，理由同 DiscardStepAway。
-        /// 副露是一組一組緊靠著的，縫比牌河小一點就夠。
         /// </summary>
-        public static float SideMeldStep => (LyingTileScreenHeight + 0.010f) / ViewSin;
+        public static float SideMeldStep => StepShowingSeam(MeldSeamHeight);
 
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
 
-        /// <summary>兩張牌之間在畫面上至少要看得到這麼寬的縫</summary>
-        const float DiscardScreenGap = 0.030f;
+        /// <summary>牌與牌之間在畫面上要露出來的綠邊有多高</summary>
+        const float DiscardSeamHeight = 0.030f;
+
+        /// <summary>副露是一組一組緊靠著的，綠邊細一點就夠</summary>
+        const float MeldSeamHeight = 0.010f;
 
         /// <summary>
         /// 往畫面深處排的那個方向要留多少間距。
         ///
         /// 這個方向**不能照牌的實際尺寸算**。攝影機是斜著往下看的，
-        /// 一張平躺的牌在畫面上佔的高度是「牌高的投影 + 牌厚的投影」；
-        /// 只留牌高的間距的話，後面那張牌的前緣會頂上來蓋住前面那張牌的遠端，
-        /// 兩張之間看不到桌面，整排就糊成一條。
+        /// 後面那張牌的前緣會頂上來蓋住前面那張牌的遠端，
+        /// 牌與牌的界線就落在「後面那張的前緣」上。
         ///
-        /// 所以間距由攝影機俯角反推：畫面上要空出 DiscardScreenGap 的縫，
-        /// 世界座標就得走 (牌的畫面高度 + 縫) / sin(俯角)。
-        /// 之後調視角，間距會自己跟著變。
+        /// 而前緣由上而下是「白色牌身 58% + 綠色牌背 42%」。
+        /// 只露出白的那段，它會跟前面那張的白色牌面連成一片，看不出是兩張牌；
+        /// 露到綠的那段，界線就一清二楚。真實牌桌上的牌本來就是互相挨著的，
+        /// 硬把牌拉開到能看見桌面反而顯得散。
+        ///
+        /// 所以間距 = 牌高 + 白色那段的投影 + 想露出的綠邊，
+        /// 後兩項再除以 sin(俯角) 換回世界座標。視角改了它會自己跟著變。
         /// </summary>
-        public static float DiscardStepAway =>
-            (LyingTileScreenHeight + DiscardScreenGap) / ViewSin;
+        public static float DiscardStepAway => StepShowingSeam(DiscardSeamHeight);
+
+        static float StepShowingSeam(float seamHeight)
+            => TileAssets.Height
+               + (FrontEdgeScreenHeight * TileAssets.FrontDepthRatio + seamHeight) / ViewSin;
 
         /// <summary>
         /// 牌山的牌畫得比場上的牌小一號。
@@ -147,9 +155,8 @@ namespace Mahjong.View.Board
         /// <summary>俯角的 cos</summary>
         static float ViewCos => new Vector2(ViewDirection.x, ViewDirection.z).magnitude;
 
-        /// <summary>一張平躺的牌在畫面上佔多高：牌高與牌厚各自的投影相加</summary>
-        static float LyingTileScreenHeight =>
-            TileAssets.Height * ViewSin + TileAssets.Depth * ViewCos;
+        /// <summary>平躺的牌，前緣在畫面上佔多高（白色那段與綠色那段合起來）</summary>
+        static float FrontEdgeScreenHeight => TileAssets.Depth * ViewCos;
 
         // ------------------------------------------------------------
         // 基本朝向
