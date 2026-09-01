@@ -24,11 +24,27 @@ namespace Mahjong.View.Board
         public const float Depth = 0.150f;
 
         /// <summary>
-        /// 白色牌身佔整體厚度的比例，其餘是綠色牌背。
-        /// 排版要用它算牌側面露出多少綠邊（見 BoardLayout.DiscardStepAway），
-        /// 所以放在這裡跟其他尺寸一起管。
+        /// 白色牌面板佔整體厚度的比例，其餘是綠色牌背。
+        ///
+        /// 真牌就是薄薄一層白色面板貼在有色的牌身上，所以側邊看過去幾乎都是綠的。
+        /// 這件事對排版很關鍵：桌上的牌是一張接一張往畫面深處排的，
+        /// 露出來的就是後面那張的側邊——側邊是綠的才分得出兩張牌，
+        /// 側邊要是白的就會跟前面那張的牌面連成一片（見 BoardLayout.DiscardStepAway）。
         /// </summary>
-        public const float FrontDepthRatio = 0.58f;
+        public const float FrontDepthRatio = 0.28f;
+
+        /// <summary>平躺那張牌照的俯角。跟牌桌的視角接近，看起來才像同一張桌上的牌。</summary>
+        public const float LyingTiltDegrees = 55f;
+
+        /// <summary>平躺那張圖的寬高比。2D 排版要先知道它多高。</summary>
+        public static float LyingSpriteAspect
+        {
+            get
+            {
+                float tilt = LyingTiltDegrees * Mathf.Deg2Rad;
+                return Width / (Height * Mathf.Sin(tilt) + Depth * Mathf.Cos(tilt));
+            }
+        }
 
         /// <summary>拍照用的環境光。與牌桌上的環境光同一個調子，拍出來才不會色差。</summary>
         static readonly Color BakeAmbient = new Color(0.42f, 0.45f, 0.43f);
@@ -48,12 +64,6 @@ namespace Mahjong.View.Board
         /// 不然牌背貼在桌面上會整片糊在一起分不出來。
         /// </summary>
         public static readonly Color BackColor = new Color(0.20f, 0.63f, 0.40f);
-
-        /// <summary>牌面四周那一圈細邊的顏色。挨著排的兩張牌就靠它分開。</summary>
-        public static readonly Color FaceEdgeColor = new Color(0.58f, 0.62f, 0.58f);
-
-        /// <summary>細邊佔牌面寬度的比例</summary>
-        const float EdgeThicknessRatio = 0.045f;
         static readonly Color FaceBackground = new Color(0.985f, 0.978f, 0.955f);
 
         static readonly Color ManColor = new Color(0.70f, 0.13f, 0.13f);
@@ -70,6 +80,7 @@ namespace Mahjong.View.Board
         static Material[] faceMaterials;
         static Texture2D[] faceTextures;
         static Sprite[] tileSprites;
+        static Sprite[] lyingTileSprites;
         static float? panelYawTowardPositiveZ;
 
         static readonly string[] SuitNamesChinese = { "萬", "筒", "條" };
@@ -123,24 +134,39 @@ namespace Mahjong.View.Board
         /// </summary>
         public static Sprite TileSprite(int tile)
         {
-            EnsureTileSprites();
+            if (tileSprites == null) tileSprites = BakeAll(lying: false);
             if (tile < 0 || tile >= tileSprites.Length) return null;
             return tileSprites[tile];
         }
 
-        static void EnsureTileSprites()
+        /// <summary>
+        /// 同一張牌，但是**平躺著、從斜上方拍**的那一張。
+        ///
+        /// 自己吃碰出來的牌用這張：真實牌桌上吃碰的牌是攤平放著的，
+        /// 跟立在手上的牌一眼就分得出來。差別在牌的厚度露在哪一邊——
+        /// 立著的露在上緣，平躺的露在下緣。
+        /// </summary>
+        public static Sprite LyingTileSprite(int tile)
         {
-            if (tileSprites != null) return;
-            tileSprites = new Sprite[TotalKinds];
+            if (lyingTileSprites == null) lyingTileSprites = BakeAll(lying: true);
+            if (tile < 0 || tile >= lyingTileSprites.Length) return null;
+            return lyingTileSprites[tile];
+        }
 
-            var baker = new TileBaker();
-            for (int tile = 0; tile < TotalKinds; tile++) tileSprites[tile] = baker.Bake(tile);
+        static Sprite[] BakeAll(bool lying)
+        {
+            var sprites = new Sprite[TotalKinds];
+
+            var baker = new TileBaker(lying);
+            for (int tile = 0; tile < TotalKinds; tile++) sprites[tile] = baker.Bake(tile);
             var sample = baker.CentreSample;
             baker.Dispose();
 
             Debug.Log(string.Format(
-                "3D 牌已拍成 2D 圖：{0} 種｜牌面中央亮度 RGB({1},{2},{3}) A{4}（越接近 255 越白）",
-                TotalKinds, sample.r, sample.g, sample.b, sample.a));
+                "3D 牌已拍成 2D 圖（{0}）：{1} 種｜牌面中央亮度 RGB({2},{3},{4}) A{5}（越接近 255 越白）",
+                lying ? "平躺" : "立著", TotalKinds, sample.r, sample.g, sample.b, sample.a));
+
+            return sprites;
         }
 
         /// <summary>
@@ -151,14 +177,18 @@ namespace Mahjong.View.Board
         class TileBaker
         {
             const int TextureWidth = 176;
-            const int TextureHeight = 240;
-
-            /// <summary>攝影機往下看幾度。太大牌面會被壓扁，太小就看不到頂面。</summary>
-            const float TiltDegrees = 11f;
             const float Distance = 0.7f;
 
-            /// <summary>畫面四周留的空白比例</summary>
-            const float FramePadding = 1.05f;
+            /// <summary>立著拍時攝影機往下看幾度。太大牌面會被壓扁，太小就看不到上緣。</summary>
+            const float StandingTiltDegrees = 11f;
+
+            /// <summary>
+            /// 畫面四周留的空白比例。留太多牌之間就會看起來有一圈空隙，
+            /// 所以貼圖高度是照牌的實際比例算的，只留 2% 給反鋸齒。
+            /// </summary>
+            const float FramePadding = 1.02f;
+
+            readonly int textureHeight;
 
             readonly RenderTexture renderTexture;
             readonly GameObject root;
@@ -173,40 +203,52 @@ namespace Mahjong.View.Board
 
             readonly int centreX;
             readonly int centreY;
+            readonly bool lying;
 
             /// <summary>最後拍的那張牌，正中央像素的亮度。純粹拿來對照桌上的牌亮不亮。</summary>
             public Color32 CentreSample { get; private set; }
 
-            public TileBaker()
+            public TileBaker(bool lyingFlat)
             {
-                renderTexture = new RenderTexture(TextureWidth, TextureHeight, 16, RenderTextureFormat.ARGB32)
+                lying = lyingFlat;
+
+                float tilt = (lying ? LyingTiltDegrees : StandingTiltDegrees) * Mathf.Deg2Rad;
+                float frameHeight = FrameHeight(tilt);
+
+                // 貼圖比例照牌的實際比例走，牌才會填滿整張圖、四周不留空白
+                textureHeight = Mathf.RoundToInt(TextureWidth * frameHeight / Width);
+
+                renderTexture = new RenderTexture(TextureWidth, textureHeight, 16,
+                                                  RenderTextureFormat.ARGB32)
                 {
                     antiAliasing = 4   // 牌的邊緣才不會有鋸齒
                 };
 
-                onBlack = new Color32[TextureWidth * TextureHeight];
-                onWhite = new Color32[TextureWidth * TextureHeight];
-                scratch = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32,
+                onBlack = new Color32[TextureWidth * textureHeight];
+                onWhite = new Color32[TextureWidth * textureHeight];
+                scratch = new Texture2D(TextureWidth, textureHeight, TextureFormat.RGBA32,
                                         mipChain: false);
 
                 root = new GameObject("TileSpriteBaker");
                 root.transform.position = BakeOrigin;
 
                 tile = TileObject.Create(root.transform);
-                tile.Place(Vector3.zero, Quaternion.identity);   // 牌面朝 +Z，也就是朝向攝影機
+                // 立著：牌面朝 +Z，也就是朝向攝影機；平躺：牌面朝上
+                tile.Place(Vector3.zero, lying
+                    ? Quaternion.LookRotation(Vector3.up, Vector3.forward)
+                    : Quaternion.identity);
 
                 camera = new GameObject("BakeCamera").AddComponent<Camera>();
                 camera.transform.SetParent(root.transform, worldPositionStays: false);
 
-                float tilt = TiltDegrees * Mathf.Deg2Rad;
                 camera.transform.localPosition =
                     new Vector3(0f, Distance * Mathf.Sin(tilt), Distance * Mathf.Cos(tilt));
                 camera.transform.LookAt(root.transform.position);
                 centreX = TextureWidth / 2;
-                centreY = TextureHeight / 2;
+                centreY = textureHeight / 2;
 
                 camera.orthographic = true;
-                camera.orthographicSize = FrameHalfHeight(tilt) * FramePadding;
+                camera.orthographicSize = frameHeight * 0.5f * FramePadding;
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.targetTexture = renderTexture;
                 camera.nearClipPlane = 0.05f;
@@ -238,8 +280,10 @@ namespace Mahjong.View.Board
 
                 var light = lightObject.AddComponent<Light>();
                 light.type = LightType.Directional;
-                // 從攝影機那一側略高處往下照，牌的頂面也帶到一點
-                light.transform.rotation = Quaternion.Euler(28f, 200f, 0f);
+
+                // 從攝影機那一側往下照，角度要對著牌面：
+                // 立著的牌面幾乎是垂直的，平躺的牌面是水平的，燈得跟著轉。
+                light.transform.rotation = Quaternion.Euler(lying ? 62f : 28f, 200f, 0f);
                 // 比牌桌主燈再亮一些：桌上的牌是正面朝天、正對主燈的，
                 // 拍照時牌立著，同樣的強度打在正面上會偏暗一階。
                 light.intensity = 1.15f;
@@ -249,10 +293,12 @@ namespace Mahjong.View.Board
 
             /// <summary>
             /// 斜著看的時候，牌在畫面上佔的高度是牌高與牌厚各自的投影相加。
-            /// 由它決定取景範圍，牌才會剛好填滿整張圖。
+            /// 立著與平躺，兩者的投影剛好對調。由它決定取景範圍與貼圖比例。
             /// </summary>
-            static float FrameHalfHeight(float tilt)
-                => (TileAssets.Height * Mathf.Cos(tilt) + TileAssets.Depth * Mathf.Sin(tilt)) * 0.5f;
+            float FrameHeight(float tilt)
+                => lying
+                    ? TileAssets.Height * Mathf.Sin(tilt) + TileAssets.Depth * Mathf.Cos(tilt)
+                    : TileAssets.Height * Mathf.Cos(tilt) + TileAssets.Depth * Mathf.Sin(tilt);
 
             public Sprite Bake(int tileId)
             {
@@ -264,7 +310,7 @@ namespace Mahjong.View.Board
                 RenderOnto(Color.black, onBlack);
                 RenderOnto(Color.white, onWhite);
 
-                var texture = new Texture2D(TextureWidth, TextureHeight, TextureFormat.RGBA32, mipChain: true)
+                var texture = new Texture2D(TextureWidth, textureHeight, TextureFormat.RGBA32, mipChain: true)
                 {
                     name = "TileSprite" + tileId,
                     filterMode = FilterMode.Trilinear,
@@ -276,7 +322,7 @@ namespace Mahjong.View.Board
                 texture.SetPixels32(pixels);
                 texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
 
-                return Sprite.Create(texture, new Rect(0f, 0f, TextureWidth, TextureHeight),
+                return Sprite.Create(texture, new Rect(0f, 0f, TextureWidth, textureHeight),
                                      new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
             }
 
@@ -288,7 +334,7 @@ namespace Mahjong.View.Board
                 var previous = RenderTexture.active;
                 RenderTexture.active = renderTexture;
 
-                scratch.ReadPixels(new Rect(0f, 0f, TextureWidth, TextureHeight), 0, 0);
+                scratch.ReadPixels(new Rect(0f, 0f, TextureWidth, textureHeight), 0, 0);
                 scratch.Apply(updateMipmaps: false);
                 scratch.GetPixels32().CopyTo(target, 0);
 
@@ -302,7 +348,7 @@ namespace Mahjong.View.Board
             /// </summary>
             Color32[] Composite()
             {
-                var result = new Color32[TextureWidth * TextureHeight];
+                var result = new Color32[TextureWidth * textureHeight];
                 var fallback = (Color32)BodyColor;
 
                 for (int i = 0; i < result.Length; i++)
@@ -543,38 +589,6 @@ namespace Mahjong.View.Board
                                         new Vector2(0f, FaceTextureHeight * 0.20f));
                 suitLabel = CreateLabel(canvasRect, "Suit", Mathf.RoundToInt(FaceTextureHeight * 0.30f),
                                         new Vector2(0f, -FaceTextureHeight * 0.22f));
-
-                CreateEdges(canvasRect);
-            }
-
-            /// <summary>
-            /// 牌面四周烘焙一圈深色細邊。
-            ///
-            /// 桌上的牌是挨著排的，兩張牌的頂面直接相鄰；沒有這圈邊，
-            /// 一整排白色牌面會連成一塊看不出張數。有了它，
-            /// 兩張牌的邊並在一起就是一條清楚的溝，跟真牌的凹槽是同一個效果。
-            /// </summary>
-            static void CreateEdges(RectTransform canvasRect)
-            {
-                float thickness = FaceTextureWidth * EdgeThicknessRatio;
-                float halfWidth = FaceTextureWidth * 0.5f;
-                float halfHeight = FaceTextureHeight * 0.5f;
-
-                CreateEdge(canvasRect, "EdgeTop", new Vector2(0f, halfHeight - thickness * 0.5f),
-                           new Vector2(FaceTextureWidth, thickness));
-                CreateEdge(canvasRect, "EdgeBottom", new Vector2(0f, -halfHeight + thickness * 0.5f),
-                           new Vector2(FaceTextureWidth, thickness));
-                CreateEdge(canvasRect, "EdgeLeft", new Vector2(-halfWidth + thickness * 0.5f, 0f),
-                           new Vector2(thickness, FaceTextureHeight));
-                CreateEdge(canvasRect, "EdgeRight", new Vector2(halfWidth - thickness * 0.5f, 0f),
-                           new Vector2(thickness, FaceTextureHeight));
-            }
-
-            static void CreateEdge(RectTransform parent, string name, Vector2 position, Vector2 size)
-            {
-                var edge = UIFactory.CreateImage(name, parent, FaceEdgeColor, rounded: false);
-                UIFactory.Anchor(edge.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                                 position, size);
             }
 
             static Text CreateLabel(RectTransform parent, string name, int fontSize, Vector2 position)

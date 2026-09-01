@@ -32,25 +32,32 @@ namespace Mahjong.View.Board
         public const float MeldGroupGap = 0.075f;
 
         /// <summary>左右兩家的副露也是往畫面深處排的，理由同 DiscardStepAway</summary>
-        public static float SideMeldStep => TileAssets.Height + TouchingGap;
+        public static float SideMeldStep => StepShowingSeam(MeldSeamHeight);
 
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
 
-        /// <summary>讓兩張牌剛好不共面，避免邊界閃爍；小到看不出來</summary>
-        const float TouchingGap = 0.002f;
+        /// <summary>牌河：後面那張牌的綠色側邊，在畫面上要露出來多高</summary>
+        const float DiscardSeamHeight = 0.025f;
+
+        /// <summary>副露是一組一組緊靠著的，縫再細一點</summary>
+        const float MeldSeamHeight = 0.014f;
 
         /// <summary>
-        /// 往畫面深處排的那個方向：讓兩張牌**剛好挨著**。
+        /// 往畫面深處排的那個方向要留多少間距。
         ///
-        /// 試過拉開到看得見桌面，反而顯得散。而且攝影機是斜著往下看的，
-        /// 只要間距超過牌高一點點，後面那張牌的前緣就會從前面那張的頂面上方
-        /// 冒出一截白色——那截跟牌面同色，非但沒分開反而更糊。
+        /// 攝影機斜著往下看，露在兩張牌之間的是**後面那張牌的側邊**。
+        /// 側邊由上而下是「薄薄一層白色面板 + 綠色牌身」：
+        /// 只露出白的那層會跟前面那張的牌面連成一片，露到綠的就分得很清楚。
         ///
-        /// 貼著排的話兩張牌的頂面直接相鄰，界線交給牌面四周烘焙好的深色邊框
-        /// （見 TileAssets.FaceEdgeColor），兩張牌的邊框並在一起就是一條清楚的溝。
+        /// 所以間距 = 牌高 + 白色面板的投影 + 想露出的綠邊，
+        /// 後兩項再除以 sin(俯角) 換回世界座標。視角或牌的比例改了它會自己跟著變。
         /// </summary>
-        public static float DiscardStepAway => TileAssets.Height + TouchingGap;
+        public static float DiscardStepAway => StepShowingSeam(DiscardSeamHeight);
+
+        static float StepShowingSeam(float seamHeight)
+            => TileAssets.Height
+               + (TileAssets.Depth * ViewCos * TileAssets.FrontDepthRatio + seamHeight) / ViewSin;
 
         /// <summary>
         /// 牌山的牌畫得比場上的牌小一號。
@@ -132,6 +139,15 @@ namespace Mahjong.View.Board
             new Vector3(0f, 0f, -TableSize * 0.04f);
 
         public const float CameraFieldOfView = 46f;
+
+        /// <summary>攝影機的視線方向</summary>
+        static Vector3 ViewDirection => (CameraTarget - CameraPosition).normalized;
+
+        /// <summary>俯角的 sin。直接從視線方向取，不必真的去算角度。</summary>
+        static float ViewSin => Mathf.Max(-ViewDirection.y, 0.01f);
+
+        /// <summary>俯角的 cos</summary>
+        static float ViewCos => new Vector2(ViewDirection.x, ViewDirection.z).magnitude;
 
 
         // ------------------------------------------------------------

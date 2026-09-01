@@ -15,11 +15,14 @@ namespace Mahjong.View
     // 每一張牌就是「桌上那張 3D 牌拍下來的照片」（TileAssets.TileSprite），
     // 頂面、側面與光影都是真的，不是用色塊在 UI 裡拼出來的假立體。
     //
-    // 吃碰槓出來的牌排在整列的最左邊，橫躺著。
+    // 吃碰槓出來的牌排在整列的最左邊，用的是「平躺著拍」的那張圖
+    // （TileAssets.LyingTileSprite）——斜斜地看到整個牌面，
+    // 就像真實牌桌上攤平放著的牌。
+    //
     // 它們原本畫在 3D 桌上自己那一側，但桌子近端剛好落在攝影機視野邊緣，
     // 玩家根本看不到自己吃了什麼；放進這一列就永遠看得見。
-    // 橫躺 + 小一號 + 不能點，跟直立的手牌一眼分得出來，
-    // 也符合真實牌桌上吃碰的牌是攤平放著的樣子。
+    // 立著的牌厚度露在上緣、平躺的露在下緣，加上小一號、不能點，
+    // 跟手牌一眼就分得出來。
     //
     // 互動：點一下選取（牌會抬起來），再點同一張才打出。
     // 選取記的是「哪一張」而不是「哪一種」——手上有兩張五萬時，
@@ -29,16 +32,17 @@ namespace Mahjong.View
     public class HandStrip : MonoBehaviour
     {
         static readonly Vector2 TileSize = new Vector2(94f, 128f);
-        const float TileGap = 6f;
+        const float TileGap = 3f;          // 牌與牌之間，幾乎貼著
         const float DrawnTileGap = 76f;    // 剛摸進來的那張明顯跟其他牌隔開
         const float SelectedLift = 26f;
         const float ClaimLift = 13f;
 
         /// <summary>吃碰的牌比手牌小一號，看得出來是已經定下來的</summary>
-        const float MeldScale = 0.80f;
+        const float MeldTileWidth = 78f;
 
-        /// <summary>旋轉前的尺寸；橫躺之後畫面上的寬高互換</summary>
-        static readonly Vector2 MeldTileSize = TileSize * MeldScale;
+        /// <summary>平躺的牌比較矮，高度照它的實際比例算</summary>
+        static Vector2 MeldTileSize =>
+            new Vector2(MeldTileWidth, MeldTileWidth / Board.TileAssets.LyingSpriteAspect);
 
         const float MeldToHandGap = 44f;   // 吃碰的牌與手牌之間
         const float MeldGroupGap = 16f;    // 吃碰的每一組之間
@@ -169,20 +173,15 @@ namespace Mahjong.View
             }
         }
 
-        /// <summary>橫躺之後，畫面上的寬度是原本的高度</summary>
-        static float MeldTileAdvance => MeldTileSize.y + TileGap;
+        static float MeldTileAdvance => MeldTileWidth + TileGap;
 
         void CreateMeldTile(int tile, float x)
         {
             var body = UIFactory.CreateImage("MeldTile", row, MeldColor, rounded: false);
-            body.sprite = Board.TileAssets.TileSprite(tile);
+            body.sprite = Board.TileAssets.LyingTileSprite(tile);
             body.preserveAspect = true;
-
-            // 轉 90 度之後寬高互換，所以要用中心對位，不然轉完會跑掉
-            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0.5f),
-                             new Vector2(x + MeldTileSize.y * 0.5f, MeldTileSize.x * 0.5f),
-                             MeldTileSize);
-            body.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f),
+                             new Vector2(x, 0f), MeldTileSize);
 
             meldTiles.Add(body.gameObject);
         }
