@@ -35,8 +35,21 @@ namespace Mahjong.View.Board
         public const float DiscardStepX = TileAssets.Width + 0.024f;
         public const float DiscardStepZ = TileAssets.Height + 0.060f;
 
+        /// <summary>
+        /// 牌山的牌畫得比場上的牌小一號。
+        /// 真實牌山一邊 18 墩，照原尺寸排會把桌子撐得很大，
+        /// 中間的牌河與副露就相對變小、看不清楚。
+        /// 牌山只是背景，縮小它可以把整張桌子縮小、鏡頭拉近，
+        /// 真正要看的牌就變大了。
+        /// </summary>
+        public const float WallTileScale = 0.62f;
+
+        public static float WallTileWidth => TileAssets.Width * WallTileScale;
+        public static float WallTileHeight => TileAssets.Height * WallTileScale;
+        public static float WallTileDepth => TileAssets.Depth * WallTileScale;
+
         // 牌山每墩之間也留一點縫，才看得出是一墩一墩疊起來的
-        public const float WallStep = TileAssets.Width + 0.014f;
+        public static float WallStep => WallTileWidth + 0.009f;
 
         public const int DiscardsPerRow = 8;
 
@@ -61,18 +74,18 @@ namespace Mahjong.View.Board
 
         /// <summary>牌山一邊從中點算起有多長（含最外那張牌的一半寬度）</summary>
         static float WallHalfLength =>
-            (WallStacksPerSide - 1) * WallStep * 0.5f + TileAssets.Width * 0.5f;
+            (WallStacksPerSide - 1) * WallStep * 0.5f + WallTileWidth * 0.5f;
 
         /// <summary>
         /// 牌山離桌心多遠。相鄰兩邊在角落不能互相穿插，
         /// 所以這一邊的長度必須落在另一邊的內緣之外。
         /// </summary>
         public static float WallDistance =>
-            WallHalfLength + TileAssets.Height * 0.5f + WallCornerGap;
+            WallHalfLength + WallTileHeight * 0.5f + WallCornerGap;
 
         /// <summary>副露平躺，排在牌山外側</summary>
         public static float MeldDistance =>
-            WallDistance + TileAssets.Height + WallToMeldGap;
+            WallDistance + WallTileHeight * 0.5f + TileAssets.Height * 0.5f + WallToMeldGap;
 
         /// <summary>對手的手牌立著，排在副露外側</summary>
         public static float HandDistance =>
@@ -80,7 +93,7 @@ namespace Mahjong.View.Board
 
         /// <summary>牌河第一列離桌心多遠，從牌山內緣再往內縮一點</summary>
         static float FirstDiscardRow =>
-            WallDistance - TileAssets.Height * 0.5f - FirstDiscardInset;
+            WallDistance - WallTileHeight * 0.5f - FirstDiscardInset;
 
         /// <summary>桌面要蓋得住最外圈的手牌</summary>
         public static float TableSize =>
@@ -89,13 +102,15 @@ namespace Mahjong.View.Board
         public const float TableThickness = 0.16f;
 
         // ---- 攝影機（想調整視角就改這三個比例）----
+        // 自己的手牌是 2D 畫在畫面下緣的，桌面近端不必留太多空間，
+        // 所以視線只稍微往前壓，鏡頭盡量拉近讓桌上的牌看得清楚。
         public static Vector3 CameraPosition =>
-            new Vector3(0f, TableSize * 0.60f, -TableSize * 0.74f);
+            new Vector3(0f, TableSize * 0.55f, -TableSize * 0.70f);
 
         public static Vector3 CameraTarget =>
-            new Vector3(0f, 0f, -TableSize * 0.16f);
+            new Vector3(0f, 0f, -TableSize * 0.04f);
 
-        public const float CameraFieldOfView = 44f;
+        public const float CameraFieldOfView = 46f;
 
         // ------------------------------------------------------------
         // 基本朝向
@@ -184,7 +199,7 @@ namespace Mahjong.View.Board
 
             // 每一邊都沿著自己的本地 X 排，再整段轉到該邊，接起來就是連續的方框
             var localPosition = new Vector3(along,
-                                            TileAssets.Depth * (0.5f + layer),
+                                            WallTileDepth * (0.5f + layer),
                                             -WallDistance);
             ToWorld(side, localPosition, LyingFaceDown, out position, out rotation);
         }

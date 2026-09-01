@@ -25,8 +25,11 @@ namespace Mahjong.View
         const float MeldGap = 22f;         // 副露每一組之間
         const float FaceInset = 5f;
 
+        const float TopEdgeRatio = 0.14f;
+
         static readonly Color BackdropColor = new Color(0f, 0f, 0f, 0.78f);
         static readonly Color TileColor = new Color(0.965f, 0.955f, 0.915f);
+        static readonly Color TopEdgeColor = new Color(0.82f, 0.88f, 0.93f);
 
         RectTransform row;
         readonly List<GameObject> tiles = new List<GameObject>();
@@ -130,10 +133,19 @@ namespace Mahjong.View
             UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
                              new Vector2(x, 0f), TileSize);
 
+            // 跟手牌一樣加一條頂面，看起來才像立體的牌而不是貼紙
+            float topHeight = TileSize.y * TopEdgeRatio;
+            var top = UIFactory.CreateImage("TopEdge", body.transform, TopEdgeColor, rounded: false);
+            UIFactory.Anchor(top.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                             new Vector2(0f, -2f), new Vector2(TileSize.x - 6f, topHeight));
+
             var face = UIFactory.CreateImage("Face", body.transform, Color.white, rounded: false);
             face.sprite = Board.TileAssets.FaceSprite(tile);
             face.preserveAspect = true;
-            UIFactory.Stretch(face.rectTransform, FaceInset);
+            face.rectTransform.anchorMin = Vector2.zero;
+            face.rectTransform.anchorMax = Vector2.one;
+            face.rectTransform.offsetMin = new Vector2(FaceInset, FaceInset);
+            face.rectTransform.offsetMax = new Vector2(-FaceInset, -(topHeight + 4f));
 
             tiles.Add(body.gameObject);
         }

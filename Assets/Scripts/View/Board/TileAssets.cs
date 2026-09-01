@@ -50,6 +50,7 @@ namespace Mahjong.View.Board
 
         static Material bodyMaterial;
         static Material backMaterial;
+        static Material glowMaterial;
         static Material[] faceMaterials;
         static Texture2D[] faceTextures;
         static Sprite[] faceSprites;
@@ -140,6 +141,53 @@ namespace Mahjong.View.Board
 
             bool alreadyFacesPositiveZ = normals != null && normals.Length > 0 && normals[0].z > 0f;
             return alreadyFacesPositiveZ ? 0f : 180f;
+        }
+
+        /// <summary>
+        /// 剛打出那張牌底下的光暈。用不受光的半透明著色器，
+        /// 才不會被桌面的光照影響而忽明忽暗。
+        /// </summary>
+        public static Material GlowMaterial
+        {
+            get
+            {
+                if (glowMaterial != null) return glowMaterial;
+
+                var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent");
+                glowMaterial = new Material(shader) { name = "DiscardGlow" };
+                glowMaterial.mainTexture = CreateGlowTexture();
+                return glowMaterial;
+            }
+        }
+
+        /// <summary>由中心往外淡出的圓形光暈，程式畫的，不用外部素材</summary>
+        static Texture2D CreateGlowTexture()
+        {
+            const int Size = 96;
+            var texture = new Texture2D(Size, Size, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "GlowTexture",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            var pixels = new Color32[Size * Size];
+            float centre = (Size - 1) * 0.5f;
+
+            for (int y = 0; y < Size; y++)
+                for (int x = 0; x < Size; x++)
+                {
+                    float distance = Mathf.Sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre));
+                    float edge = Mathf.Clamp01(1f - distance / centre);
+
+                    // 平方一次讓中間亮、邊緣收得快，看起來才像光暈而不是一塊圓餅
+                    byte alpha = (byte)(edge * edge * 255f);
+                    pixels[y * Size + x] = new Color32(255, 255, 255, alpha);
+                }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+            return texture;
         }
 
         static Material CreateMaterial(string name, Color color)

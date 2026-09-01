@@ -51,7 +51,6 @@ namespace Mahjong.View
         Text statusLabel;
         Text centreInfo;
         Text[] seatLabels;
-        Button readyButton;
 
         GameAction pendingHumanAction;
         List<GameAction> humanTurnOptions;
@@ -74,6 +73,11 @@ namespace Mahjong.View
         void Start()
         {
             fanTable = FanTable.Default();
+
+            // 開場的莊家隨機決定。原本欄位預設為 0，而 0 就是玩家的座位，
+            // 所以每一局都是玩家坐莊。
+            dealerIndex = UnityEngine.Random.Range(0, GameState.PlayerCount);
+
             BuildScene();
             StartCoroutine(StartNewHand(rotateDealer: false));
         }
@@ -99,8 +103,8 @@ namespace Mahjong.View
             actionButtons = ActionButtons.Create(canvas.transform);
             actionButtons.ActionChosen += OnHumanActionChosen;
             actionButtons.ActionHovered += OnHumanActionHovered;
+            actionButtons.ReadyDeclared += DeclareReady;
 
-            BuildReadyButton(canvas.transform);
             winningHand = WinningHandView.Create(canvas.transform);
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
@@ -171,19 +175,6 @@ namespace Mahjong.View
                              new Vector2(24f, -14f), new Vector2(760f, 24f));
         }
 
-        /// <summary>宣告聽牌的按鈕，擺在動作按鈕列右側僅有的那段空位</summary>
-        void BuildReadyButton(Transform parent)
-        {
-            var size = new Vector2(120f, 76f);
-            readyButton = UIFactory.CreateButton("Ready", parent,
-                                                 UiFont.SupportsChinese ? "聽" : "Ready",
-                                                 size, ReadyButtonColor, Color.white, DeclareReady);
-            UIFactory.Anchor((RectTransform)readyButton.transform,
-                             new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                             new Vector2(600f, 224f), size);
-            readyButton.gameObject.SetActive(false);
-        }
-
         // ------------------------------------------------------------
         // 開新的一局
         // ------------------------------------------------------------
@@ -204,7 +195,6 @@ namespace Mahjong.View
             humanTurnOptions = null;
             humanDeclaredReady = false;
             readyAnnounced = false;
-            readyButton.gameObject.SetActive(false);
 
             board.RevealHands = false;
             board.WinnerSeat = -1;
@@ -460,15 +450,13 @@ namespace Mahjong.View
             }
 
             SetStatus(UiFont.SupportsChinese ? "輪到你出牌（點兩下打出）" : "Your turn: tap twice");
-            actionButtons.Show(humanTurnOptions);
-            readyButton.gameObject.SetActive(CanDeclareReadyNow());
+            actionButtons.Show(humanTurnOptions, CanDeclareReadyNow());
             handStrip.SetInteractable(true);
 
             while (pendingHumanAction == null) yield return null;
 
             handStrip.SetInteractable(false);
             actionButtons.Hide();
-            readyButton.gameObject.SetActive(false);
             SetStatus("");
         }
 
@@ -478,7 +466,7 @@ namespace Mahjong.View
             humanTurnOptions = null;
 
             SetStatus(UiFont.SupportsChinese ? "要不要叫牌？滑按鈕看用掉哪幾張" : "Claim it?");
-            actionButtons.Show(options);
+            actionButtons.Show(options, canDeclareReady: false);
 
             while (pendingHumanAction == null) yield return null;
 
@@ -561,7 +549,6 @@ namespace Mahjong.View
             handStrip.SetInteractable(false);
             handStrip.ClearClaimHighlight();
             actionButtons.Hide();
-            readyButton.gameObject.SetActive(false);
 
             board.RevealHands = true;
             board.WinnerSeat = result == null ? -1 : result.WinnerSeat;

@@ -36,6 +36,8 @@ namespace Mahjong.View.Board
         readonly List<TileObject> pool = new List<TileObject>();
         int usedTiles;
 
+        Transform discardGlow;
+
         /// <summary>牌局結束後把三家的手牌翻開</summary>
         public bool RevealHands { get; set; }
 
@@ -61,7 +63,65 @@ namespace Mahjong.View.Board
 
             tileRoot = new GameObject("Tiles").transform;
             tileRoot.SetParent(transform, worldPositionStays: false);
+
+            BuildDiscardGlow();
         }
+
+        /// <summary>
+        /// 剛打出的那張牌底下鋪一圈光暈，讓所有人一眼看到最新打的是哪一張。
+        /// 只做一個重複使用，每次換位置就好。
+        /// </summary>
+        void BuildDiscardGlow()
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "DiscardGlow";
+            Destroy(quad.GetComponent<Collider>());
+            quad.transform.SetParent(transform, worldPositionStays: false);
+
+            // 平躺在桌面上，稍微浮起來免得跟桌面互相閃爍
+            quad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            quad.transform.localScale = Vector3.one * (TileAssets.Height * 2.1f);
+
+            var renderer = quad.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = TileAssets.GlowMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            discardGlow = quad.transform;
+            discardGlow.gameObject.SetActive(false);
+        }
+
+        /// <summary>把光暈移到剛打出的那張牌底下；沒有剛打出的牌就收起來。</summary>
+        void UpdateDiscardGlow(GameState state)
+        {
+            int from = state.LastDiscardFrom;
+            bool hasDiscard = state.LastDiscardTile != TileObject.NoTile
+                              && from >= 0 && from < GameState.PlayerCount
+                              && state.Players[from] != null
+                              && state.Players[from].Discards.Count > 0;
+
+            if (!hasDiscard)
+            {
+                discardGlow.gameObject.SetActive(false);
+                return;
+            }
+
+            var discards = state.Players[from].Discards;
+            int columns = BoardLayout.DiscardColumns(discards.Count);
+            int displayIndex = DisplayIndexOf(from);
+
+            Vector3 position;
+            Quaternion rotation;
+            BoardLayout.ToWorld(displayIndex, BoardLayout.DiscardSlot(discards.Count - 1, columns),
+                                BoardLayout.LyingFaceUp, out position, out rotation);
+
+            position.y = 0.004f;   // 貼著桌面
+            discardGlow.localPosition = position;
+            discardGlow.gameObject.SetActive(true);
+        }
+
+        int DisplayIndexOf(int seat)
+            => (seat - humanSeat + GameState.PlayerCount) % GameState.PlayerCount;
 
         void SetUpCamera()
         {
@@ -145,6 +205,7 @@ namespace Mahjong.View.Board
                 DrawSeat(state, seat, offset);
             }
 
+            UpdateDiscardGlow(state);
             HideUnusedTiles();
         }
 
@@ -173,6 +234,7 @@ namespace Mahjong.View.Board
 
                     var tile = TakeTile();
                     tile.SetTile(TileObject.NoTile);
+                    tile.SetScale(BoardLayout.WallTileScale);
                     tile.Place(position, rotation);
                 }
             }
@@ -272,6 +334,7 @@ namespace Mahjong.View.Board
 
             var tile = pool[usedTiles++];
             tile.SetVisible(true);
+            tile.SetScale(1f);     // 池子裡的牌可能上一輪是牌山的小牌
             tile.SetNormal();
             return tile;
         }

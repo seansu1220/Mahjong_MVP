@@ -29,6 +29,15 @@ namespace Mahjong.View
         const float ClaimLift = 13f;
         const float FaceInset = 7f;
 
+        /// <summary>
+        /// 牌的頂面。實體牌從斜前方看得到一小條上緣，
+        /// 純平面的長方形少了這一條就會很像貼紙。
+        /// </summary>
+        const float TopEdgeRatio = 0.14f;
+
+        static readonly Color TopEdgeColor = new Color(0.82f, 0.88f, 0.93f);
+        static readonly Color TopEdgeShadow = new Color(0.66f, 0.72f, 0.76f);
+
         static readonly Color BodyColor = new Color(0.955f, 0.945f, 0.905f);
         static readonly Color SelectedColor = new Color(1f, 0.90f, 0.62f);
         static readonly Color ClaimColor = new Color(0.70f, 0.88f, 1f);
@@ -115,10 +124,12 @@ namespace Mahjong.View
             UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f),
                              new Vector2(x, 0f), TileSize);
 
+            AddTopEdge(body.transform);
+
             var face = UIFactory.CreateImage("Face", body.transform, Color.white, rounded: false);
             face.sprite = Board.TileAssets.FaceSprite(tile);
             face.preserveAspect = true;
-            UIFactory.Stretch(face.rectTransform, FaceInset);
+            StretchBelowTopEdge(face.rectTransform);
 
             var button = body.gameObject.AddComponent<Button>();
             button.targetGraphic = body;
@@ -128,6 +139,30 @@ namespace Mahjong.View
             button.onClick.AddListener(() => OnSlotClicked(captured));
 
             return new Entry { Tile = tile, Rect = body.rectTransform, Body = body };
+        }
+
+        /// <summary>牌的頂面：一條亮色橫帶，下面再壓一條暗線當轉折</summary>
+        static void AddTopEdge(Transform parent)
+        {
+            float height = TileSize.y * TopEdgeRatio;
+
+            var top = UIFactory.CreateImage("TopEdge", parent, TopEdgeColor, rounded: false);
+            UIFactory.Anchor(top.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                             new Vector2(0f, -3f), new Vector2(TileSize.x - 8f, height));
+
+            var crease = UIFactory.CreateImage("TopCrease", parent, TopEdgeShadow, rounded: false);
+            UIFactory.Anchor(crease.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                             new Vector2(0f, -3f - height), new Vector2(TileSize.x - 8f, 2f));
+        }
+
+        /// <summary>牌面要讓出頂面那一條，不然會蓋住</summary>
+        static void StretchBelowTopEdge(RectTransform rect)
+        {
+            float topInset = TileSize.y * TopEdgeRatio + 6f;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(FaceInset, FaceInset);
+            rect.offsetMax = new Vector2(-FaceInset, -topInset);
         }
 
         // ------------------------------------------------------------

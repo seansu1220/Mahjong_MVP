@@ -149,6 +149,15 @@ namespace Mahjong.View.Board
             transform.localRotation = rotation;
         }
 
+        /// <summary>
+        /// 整張牌等比縮放。牌山的牌畫得比場上的牌小一號，就是靠這個。
+        /// 牌的零件尺寸都是絕對值，直接縮根物件最單純。
+        /// </summary>
+        public void SetScale(float scale)
+        {
+            transform.localScale = Vector3.one * scale;
+        }
+
         /// <summary>把牌從原位抬起來，做出「被拿起來」的感覺。</summary>
         public void SetLift(Vector3 offset)
         {
