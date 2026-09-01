@@ -12,8 +12,8 @@ namespace Mahjong.View.Board
     // 各區塊離桌心多遠**不寫死**，一律從牌的尺寸與墩數推算：
     //
     //   牌山   由「一邊排幾墩」決定，四角剛好接起來又不互相穿插
-    //   副露   排在牌山外側，平躺攤開
-    //   手牌   排在副露外側，立著（只畫三家對手，自己的手牌由 2D 負責）
+    //   手牌   排在牌山外側，立著；副露平躺接在同一列的右邊
+    //          （只畫三家對手，自己的手牌與副露由 2D 負責）
     //   牌河   在牌山圍出來的內側，往桌心排
     //
     // 寫死距離的話，只要改了牌的大小或墩數，四個角就會重疊或裂開，
@@ -39,11 +39,17 @@ namespace Mahjong.View.Board
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public const float DiscardStepX = TileAssets.Width + 0.024f;
 
-        /// <summary>牌與牌之間在畫面上要露出來的綠邊有多高</summary>
-        const float DiscardSeamHeight = 0.030f;
+        // 綠邊留多少是有上下限的：
+        //   太窄 → 綠邊被前面那張蓋住，兩張牌糊成一條
+        //   太寬 → 中間露出桌面，牌看起來散開了
+        // 這裡取靠近下限的值：牌彼此挨著，但看得出是兩張。
+        // 上限還要留餘裕給透視——近端的牌會比這裡的正交估算再散開一些。
 
-        /// <summary>副露是一組一組緊靠著的，綠邊細一點就夠</summary>
-        const float MeldSeamHeight = 0.010f;
+        /// <summary>牌河：牌與牌之間在畫面上要露出來的綠邊有多高</summary>
+        const float DiscardSeamHeight = 0.014f;
+
+        /// <summary>副露是一組一組緊靠著的，綠邊再細一點</summary>
+        const float MeldSeamHeight = 0.006f;
 
         /// <summary>
         /// 往畫面深處排的那個方向要留多少間距。
@@ -95,8 +101,7 @@ namespace Mahjong.View.Board
 
         // ---- 各區塊之間的留白 ----
         const float WallCornerGap = 0.03f;
-        const float WallToMeldGap = 0.11f;
-        const float MeldToHandGap = 0.13f;
+        const float WallToHandGap = 0.14f;
         const float FirstDiscardInset = 0.16f;
 
         // ------------------------------------------------------------
@@ -114,13 +119,12 @@ namespace Mahjong.View.Board
         public static float WallDistance =>
             WallHalfLength + WallTileHeight * 0.5f + WallCornerGap;
 
-        /// <summary>副露平躺，排在牌山外側</summary>
-        public static float MeldDistance =>
-            WallDistance + WallTileHeight * 0.5f + TileAssets.Height * 0.5f + WallToMeldGap;
-
-        /// <summary>對手的手牌立著，排在副露外側</summary>
+        /// <summary>
+        /// 手牌與副露同在一列，排在牌山外側。
+        /// 用牌高（而不是手牌立著時的牌厚）算間隙，因為同一列上平躺的副露佔得比較多。
+        /// </summary>
         public static float HandDistance =>
-            MeldDistance + TileAssets.Height * 0.5f + TileAssets.Depth * 0.5f + MeldToHandGap;
+            WallDistance + WallTileHeight * 0.5f + TileAssets.Height * 0.5f + WallToHandGap;
 
         /// <summary>牌河第一列離桌心多遠，從牌山內緣再往內縮一點</summary>
         static float FirstDiscardRow =>
@@ -208,8 +212,9 @@ namespace Mahjong.View.Board
         public static Vector3 HandSlot(float x)
             => new Vector3(x, TileAssets.Height * 0.5f, -HandDistance);
 
+        /// <summary>副露跟手牌同一列，只是平躺著</summary>
         public static Vector3 MeldSlot(float x)
-            => new Vector3(x, TileAssets.Depth * 0.5f, -MeldDistance);
+            => new Vector3(x, TileAssets.Depth * 0.5f, -HandDistance);
 
         /// <summary>左右兩家（畫面上的 1 與 3）</summary>
         public static bool IsSideSeat(int displayIndex)

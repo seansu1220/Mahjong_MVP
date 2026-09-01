@@ -209,19 +209,24 @@ namespace Mahjong.View.Board
             var player = state.Players[seat];
             if (player == null) return;
 
-            float meldWidth = MeasureMelds(player.Melds, displayIndex);
+            // 自己的手牌與副露都由 2D 的 HandStrip 畫在畫面下緣，桌上不重複再畫一次。
+            // 桌子近端剛好落在攝影機視野邊緣，畫在那裡也看不到。
+            bool ownSeat = seat == humanSeat;
+            var handList = ownSeat ? EmptyHand : CollectHand(player);
+            var meldList = ownSeat ? EmptyMelds : player.Melds;
 
-            // 自己的手牌由 2D 的 HandStrip 畫在畫面下緣，桌上不重複再畫一次
-            var handList = seat == humanSeat ? EmptyHand : CollectHand(player);
+            float meldWidth = MeasureMelds(meldList, displayIndex);
 
             float cursor = BoardLayout.HandRowStartX(handList.Count, meldWidth);
             DrawHand(handList, displayIndex, RevealHands, ref cursor);
 
-            if (player.Melds.Count > 0) cursor += BoardLayout.HandToMeldGap;
-            DrawMelds(player.Melds, displayIndex, cursor);
+            if (meldList.Count > 0) cursor += BoardLayout.HandToMeldGap;
+            DrawMelds(meldList, displayIndex, cursor);
 
             DrawDiscards(player.Discards, displayIndex);
         }
+
+        static readonly List<Meld> EmptyMelds = new List<Meld>();
 
         static List<int> CollectHand(PlayerState player)
         {

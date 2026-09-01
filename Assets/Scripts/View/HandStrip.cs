@@ -15,6 +15,11 @@ namespace Mahjong.View
     // 每一張牌就是「桌上那張 3D 牌拍下來的照片」（TileAssets.TileSprite），
     // 頂面、側面與光影都是真的，不是用色塊在 UI 裡拼出來的假立體。
     //
+    // 吃碰槓出來的副露接在手牌右邊，同一列顯示。
+    // 它們原本畫在 3D 桌上自己那一側，但桌子近端剛好落在攝影機視野邊緣，
+    // 玩家根本看不到自己吃了什麼；放進這一列就永遠看得見。
+    // 副露畫得比手牌小一號，也不能點——一眼就知道那幾張已經定了。
+    //
     // 互動：點一下選取（牌會抬起來），再點同一張才打出。
     // 選取記的是「哪一張」而不是「哪一種」——手上有兩張五萬時，
     // 點左邊那張只有左邊那張會抬起來。
@@ -28,15 +33,24 @@ namespace Mahjong.View
         const float SelectedLift = 26f;
         const float ClaimLift = 13f;
 
+        /// <summary>副露的牌比手牌小一號，看得出來是已經定下來的</summary>
+        const float MeldScale = 0.86f;
+
+        static readonly Vector2 MeldTileSize = TileSize * MeldScale;
+        const float HandToMeldGap = 36f;   // 手牌與副露之間
+        const float MeldGroupGap = 18f;    // 副露每一組之間
+
         // 牌本身已經是拍好的圖，這裡只是替它上色。
         // 底色是白的，乘上去才不會把牌面染掉。
         static readonly Color BodyColor = Color.white;
         static readonly Color SelectedColor = new Color(1f, 0.92f, 0.72f);
         static readonly Color ClaimColor = new Color(0.78f, 0.90f, 1f);
         static readonly Color DimColor = new Color(0.78f, 0.78f, 0.76f);
+        static readonly Color MeldColor = new Color(0.90f, 0.90f, 0.88f);
 
         RectTransform row;
         readonly List<Entry> entries = new List<Entry>();
+        readonly List<GameObject> meldTiles = new List<GameObject>();
         readonly HashSet<int> claimHighlightSlots = new HashSet<int>();
 
         int selectedSlot = -1;
@@ -77,7 +91,7 @@ namespace Mahjong.View
             Clear();
 
             var ordered = BuildOrderedHand(player, justDrawnTile);
-            LayoutTiles(ordered, justDrawnTile);
+            LayoutRow(player, ordered, justDrawnTile);
             ApplyVisuals();
         }
 
@@ -93,14 +107,29 @@ namespace Mahjong.View
             return ordered;
         }
 
-        void LayoutTiles(List<int> ordered, int justDrawnTile)
+        /// <summary>手牌在左、副露接在右邊，整列置中。</summary>
+        void LayoutRow(PlayerState player, List<int> ordered, int justDrawnTile)
         {
             bool hasDrawnTile = justDrawnTile >= 0 && ordered.Count > 0;
-            int lastConcealed = hasDrawnTile ? ordered.Count - 1 : ordered.Count;
 
-            float width = ordered.Count * TileSize.x + Mathf.Max(0, ordered.Count - 1) * TileGap
-                        + (hasDrawnTile ? DrawnTileGap : 0f);
-            float cursor = -width * 0.5f;
+            float handWidth = ordered.Count * TileSize.x + Mathf.Max(0, ordered.Count - 1) * TileGap
+                            + (hasDrawnTile ? DrawnTileGap : 0f);
+            float meldsWidth = MeasureMelds(player.Melds);
+            float total = handWidth + (meldsWidth > 0f ? HandToMeldGap + meldsWidth : 0f);
+
+            float cursor = -total * 0.5f;
+            LayoutHand(ordered, hasDrawnTile, ref cursor);
+
+            if (meldsWidth > 0f)
+            {
+                cursor += HandToMeldGap;
+                LayoutMelds(player.Melds, cursor);
+            }
+        }
+
+        void LayoutHand(List<int> ordered, bool hasDrawnTile, ref float cursor)
+        {
+            int lastConcealed = hasDrawnTile ? ordered.Count - 1 : ordered.Count;
 
             for (int i = 0; i < ordered.Count; i++)
             {
@@ -108,6 +137,43 @@ namespace Mahjong.View
                 entries.Add(CreateTile(ordered[i], cursor, entries.Count));
                 cursor += TileSize.x + TileGap;
             }
+        }
+
+        /// <summary>量寬度與實際排列必須用同一套累加，不然整列會偏掉</summary>
+        static float MeasureMelds(List<Meld> melds)
+        {
+            if (melds == null || melds.Count == 0) return 0f;
+
+            float width = 0f;
+            foreach (var meld in melds)
+                width += meld.Tiles().Length * (MeldTileSize.x + TileGap) + MeldGroupGap;
+            return width - TileGap - MeldGroupGap;
+        }
+
+        void LayoutMelds(List<Meld> melds, float cursor)
+        {
+            foreach (var meld in melds)
+            {
+                // 被吃碰走的那張排在整組中間，跟桌上的副露畫法一致
+                var layout = MeldDisplay.Arrange(meld);
+                foreach (int tileId in layout.Tiles)
+                {
+                    CreateMeldTile(tileId, cursor);
+                    cursor += MeldTileSize.x + TileGap;
+                }
+                cursor += MeldGroupGap;
+            }
+        }
+
+        void CreateMeldTile(int tile, float x)
+        {
+            var body = UIFactory.CreateImage("MeldTile", row, MeldColor, rounded: false);
+            body.sprite = Board.TileAssets.TileSprite(tile);
+            body.preserveAspect = true;
+            UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f),
+                             new Vector2(x, 0f), MeldTileSize);
+
+            meldTiles.Add(body.gameObject);
         }
 
         Entry CreateTile(int tile, float x, int slot)
@@ -212,6 +278,14 @@ namespace Mahjong.View
                 Destroy(entry.Rect.gameObject);
             }
             entries.Clear();
+
+            foreach (var meldTile in meldTiles)
+            {
+                if (meldTile == null) continue;
+                meldTile.SetActive(false);
+                Destroy(meldTile);
+            }
+            meldTiles.Clear();
         }
     }
 }

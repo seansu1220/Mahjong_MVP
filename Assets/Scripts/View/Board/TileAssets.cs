@@ -41,7 +41,7 @@ namespace Mahjong.View.Board
         static readonly Vector3 BakeOrigin = new Vector3(0f, 5000f, 0f);
 
         /// <summary>牌身的白色。上色時要乘在這個底色上，不能直接取代。</summary>
-        public static readonly Color BodyColor = new Color(0.94f, 0.93f, 0.88f);
+        public static readonly Color BodyColor = new Color(0.97f, 0.965f, 0.945f);
 
         /// <summary>
         /// 牌背的綠色。刻意比桌布亮一階也更飽和，
@@ -129,9 +129,12 @@ namespace Mahjong.View.Board
 
             var baker = new TileBaker();
             for (int tile = 0; tile < TotalKinds; tile++) tileSprites[tile] = baker.Bake(tile);
+            var sample = baker.CentreSample;
             baker.Dispose();
 
-            Debug.Log("3D 牌已拍成 2D 圖：" + TotalKinds + " 種");
+            Debug.Log(string.Format(
+                "3D 牌已拍成 2D 圖：{0} 種｜牌面中央亮度 RGB({1},{2},{3}) A{4}（越接近 255 越白）",
+                TotalKinds, sample.r, sample.g, sample.b, sample.a));
         }
 
         /// <summary>
@@ -162,6 +165,12 @@ namespace Mahjong.View.Board
             readonly UnityEngine.Rendering.AmbientMode previousAmbientMode;
             readonly Color previousAmbient;
 
+            readonly int centreX;
+            readonly int centreY;
+
+            /// <summary>最後拍的那張牌，正中央像素的亮度。純粹拿來對照桌上的牌亮不亮。</summary>
+            public Color32 CentreSample { get; private set; }
+
             public TileBaker()
             {
                 renderTexture = new RenderTexture(TextureWidth, TextureHeight, 16, RenderTextureFormat.ARGB32)
@@ -187,6 +196,8 @@ namespace Mahjong.View.Board
                 camera.transform.localPosition =
                     new Vector3(0f, Distance * Mathf.Sin(tilt), Distance * Mathf.Cos(tilt));
                 camera.transform.LookAt(root.transform.position);
+                centreX = TextureWidth / 2;
+                centreY = TextureHeight / 2;
 
                 camera.orthographic = true;
                 camera.orthographicSize = FrameHalfHeight(tilt) * FramePadding;
@@ -223,7 +234,9 @@ namespace Mahjong.View.Board
                 light.type = LightType.Directional;
                 // 從攝影機那一側略高處往下照，牌的頂面也帶到一點
                 light.transform.rotation = Quaternion.Euler(28f, 200f, 0f);
-                light.intensity = 0.95f;
+                // 比牌桌主燈再亮一些：桌上的牌是正面朝天、正對主燈的，
+                // 拍照時牌立著，同樣的強度打在正面上會偏暗一階。
+                light.intensity = 1.15f;
                 light.color = new Color(1f, 0.98f, 0.94f);
                 light.shadows = LightShadows.None;
             }
@@ -252,7 +265,9 @@ namespace Mahjong.View.Board
                     wrapMode = TextureWrapMode.Clamp,
                     anisoLevel = 4
                 };
-                texture.SetPixels32(Composite());
+                var pixels = Composite();
+                CentreSample = pixels[centreY * TextureWidth + centreX];
+                texture.SetPixels32(pixels);
                 texture.Apply(updateMipmaps: true, makeNoLongerReadable: true);
 
                 return Sprite.Create(texture, new Rect(0f, 0f, TextureWidth, TextureHeight),
