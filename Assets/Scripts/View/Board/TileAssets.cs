@@ -50,7 +50,7 @@ namespace Mahjong.View.Board
 
         static Material bodyMaterial;
         static Material backMaterial;
-        static Material glowMaterial;
+        static Sprite ringSprite;
         static Material[] faceMaterials;
         static Texture2D[] faceTextures;
         static Sprite[] faceSprites;
@@ -144,29 +144,35 @@ namespace Mahjong.View.Board
         }
 
         /// <summary>
-        /// 剛打出那張牌底下的光暈。用不受光的半透明著色器，
-        /// 才不會被桌面的光照影響而忽明忽暗。
+        /// 剛打出那張牌外面套的圓框。程式畫的環狀漸層，不用外部素材。
+        /// 給 2D 介面用，所以是 Sprite 而不是材質。
         /// </summary>
-        public static Material GlowMaterial
+        public static Sprite RingSprite
         {
             get
             {
-                if (glowMaterial != null) return glowMaterial;
+                if (ringSprite != null) return ringSprite;
 
-                var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent");
-                glowMaterial = new Material(shader) { name = "DiscardGlow" };
-                glowMaterial.mainTexture = CreateGlowTexture();
-                return glowMaterial;
+                var texture = CreateRingTexture();
+                ringSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height),
+                                           new Vector2(0.5f, 0.5f), pixelsPerUnit: 100f);
+                return ringSprite;
             }
         }
 
-        /// <summary>由中心往外淡出的圓形光暈，程式畫的，不用外部素材</summary>
-        static Texture2D CreateGlowTexture()
+        /// <summary>
+        /// 環狀漸層：亮度在某個半徑上最強，往內往外都淡掉，
+        /// 看起來就是一圈發光的框而不是一塊圓餅。
+        /// </summary>
+        static Texture2D CreateRingTexture()
         {
-            const int Size = 96;
+            const int Size = 128;
+            const float RingRadius = 0.80f;   // 佔半徑的比例
+            const float RingWidth = 0.26f;
+
             var texture = new Texture2D(Size, Size, TextureFormat.RGBA32, mipChain: false)
             {
-                name = "GlowTexture",
+                name = "RingTexture",
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear
             };
@@ -177,12 +183,16 @@ namespace Mahjong.View.Board
             for (int y = 0; y < Size; y++)
                 for (int x = 0; x < Size; x++)
                 {
-                    float distance = Mathf.Sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre));
-                    float edge = Mathf.Clamp01(1f - distance / centre);
+                    float dx = (x - centre) / centre;
+                    float dy = (y - centre) / centre;
+                    float distance = Mathf.Sqrt(dx * dx + dy * dy);
 
-                    // 平方一次讓中間亮、邊緣收得快，看起來才像光暈而不是一塊圓餅
-                    byte alpha = (byte)(edge * edge * 255f);
-                    pixels[y * Size + x] = new Color32(255, 255, 255, alpha);
+                    float falloff = Mathf.Abs(distance - RingRadius) / RingWidth;
+                    float alpha = Mathf.Clamp01(1f - falloff);
+                    alpha *= alpha;                       // 收得快一點，框才不會糊
+                    if (distance > 1f) alpha = 0f;        // 超出圓形範圍一律透明
+
+                    pixels[y * Size + x] = new Color32(255, 255, 255, (byte)(alpha * 255f));
                 }
 
             texture.SetPixels32(pixels);

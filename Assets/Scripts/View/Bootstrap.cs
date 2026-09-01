@@ -45,6 +45,7 @@ namespace Mahjong.View
         TableBoard board;
         HandStrip handStrip;
         ActionButtons actionButtons;
+        DiscardSpotlight discardSpotlight;
         WinningHandView winningHand;
         ResultView resultView;
         AnnouncementView announcement;
@@ -105,6 +106,7 @@ namespace Mahjong.View
             actionButtons.ActionHovered += OnHumanActionHovered;
             actionButtons.ReadyDeclared += DeclareReady;
 
+            discardSpotlight = DiscardSpotlight.Create((RectTransform)canvas.transform);
             winningHand = WinningHandView.Create(canvas.transform);
             resultView = ResultView.Create(canvas.transform);
             announcement = AnnouncementView.Create(canvas.transform);
@@ -217,6 +219,18 @@ namespace Mahjong.View
             handStrip.Refresh(state.Players[HumanSeat],
                               state.CurrentPlayer == HumanSeat ? lastDrawnTile : TileObject.NoTile);
             RefreshLabels();
+            RefreshDiscardSpotlight();
+        }
+
+        /// <summary>把紫框提示移到剛打出的那張牌上，沒有就收起來</summary>
+        void RefreshDiscardSpotlight()
+        {
+            Vector3 worldPosition;
+            if (state.Phase != GamePhase.Ended
+                && board.TryGetLastDiscardPosition(state, out worldPosition))
+                discardSpotlight.Show(state.LastDiscardTile, worldPosition, board.BoardCamera);
+            else
+                discardSpotlight.Hide();
         }
 
         void RefreshLabels()

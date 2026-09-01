@@ -36,8 +36,6 @@ namespace Mahjong.View.Board
         readonly List<TileObject> pool = new List<TileObject>();
         int usedTiles;
 
-        Transform discardGlow;
-
         /// <summary>牌局結束後把三家的手牌翻開</summary>
         public bool RevealHands { get; set; }
 
@@ -63,65 +61,31 @@ namespace Mahjong.View.Board
 
             tileRoot = new GameObject("Tiles").transform;
             tileRoot.SetParent(transform, worldPositionStays: false);
-
-            BuildDiscardGlow();
         }
 
-        /// <summary>
-        /// 剛打出的那張牌底下鋪一圈光暈，讓所有人一眼看到最新打的是哪一張。
-        /// 只做一個重複使用，每次換位置就好。
-        /// </summary>
-        void BuildDiscardGlow()
-        {
-            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = "DiscardGlow";
-            Destroy(quad.GetComponent<Collider>());
-            quad.transform.SetParent(transform, worldPositionStays: false);
-
-            // 平躺在桌面上，稍微浮起來免得跟桌面互相閃爍
-            quad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            quad.transform.localScale = Vector3.one * (TileAssets.Height * 2.1f);
-
-            var renderer = quad.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = TileAssets.GlowMaterial;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderer.receiveShadows = false;
-
-            discardGlow = quad.transform;
-            discardGlow.gameObject.SetActive(false);
-        }
-
-        /// <summary>把光暈移到剛打出的那張牌底下；沒有剛打出的牌就收起來。</summary>
-        void UpdateDiscardGlow(GameState state)
-        {
-            int from = state.LastDiscardFrom;
-            bool hasDiscard = state.LastDiscardTile != TileObject.NoTile
-                              && from >= 0 && from < GameState.PlayerCount
-                              && state.Players[from] != null
-                              && state.Players[from].Discards.Count > 0;
-
-            if (!hasDiscard)
-            {
-                discardGlow.gameObject.SetActive(false);
-                return;
-            }
-
-            var discards = state.Players[from].Discards;
-            int columns = BoardLayout.DiscardColumns(discards.Count);
-            int displayIndex = DisplayIndexOf(from);
-
-            Vector3 position;
-            Quaternion rotation;
-            BoardLayout.ToWorld(displayIndex, BoardLayout.DiscardSlot(discards.Count - 1, columns),
-                                BoardLayout.LyingFaceUp, out position, out rotation);
-
-            position.y = 0.004f;   // 貼著桌面
-            discardGlow.localPosition = position;
-            discardGlow.gameObject.SetActive(true);
-        }
+        /// <summary>拍牌桌的攝影機，2D 提示要用它把世界座標投影到螢幕上</summary>
+        public Camera BoardCamera { get { return boardCamera; } }
 
         int DisplayIndexOf(int seat)
             => (seat - humanSeat + GameState.PlayerCount) % GameState.PlayerCount;
+
+        /// <summary>最後打出那張牌在桌上的位置，找不到就回傳 false</summary>
+        public bool TryGetLastDiscardPosition(GameState state, out Vector3 worldPosition)
+        {
+            worldPosition = Vector3.zero;
+
+            int from = state.LastDiscardFrom;
+            if (state.LastDiscardTile == TileObject.NoTile) return false;
+            if (from < 0 || from >= GameState.PlayerCount) return false;
+
+            var player = state.Players[from];
+            if (player == null || player.Discards.Count == 0) return false;
+
+            int columns = BoardLayout.DiscardColumns(player.Discards.Count);
+            var local = BoardLayout.DiscardSlot(player.Discards.Count - 1, columns);
+            worldPosition = BoardLayout.SeatRotation(DisplayIndexOf(from)) * local;
+            return true;
+        }
 
         void SetUpCamera()
         {
@@ -205,7 +169,6 @@ namespace Mahjong.View.Board
                 DrawSeat(state, seat, offset);
             }
 
-            UpdateDiscardGlow(state);
             HideUnusedTiles();
         }
 
@@ -298,7 +261,7 @@ namespace Mahjong.View.Board
                 foreach (int tileId in layout.Tiles)
                 {
                     var local = BoardLayout.MeldSlot(cursor + BoardLayout.MeldStep * 0.5f);
-                    PlaceTile(tileId, displayIndex, local, BoardLayout.LyingFaceUp);
+                    PlaceTileFacingViewer(tileId, displayIndex, local);
                     cursor += BoardLayout.MeldStep;
                 }
                 cursor += BoardLayout.MeldGroupGap;
@@ -309,8 +272,8 @@ namespace Mahjong.View.Board
         {
             int columns = BoardLayout.DiscardColumns(discards.Count);
             for (int i = 0; i < discards.Count; i++)
-                PlaceTile(discards[i], displayIndex, BoardLayout.DiscardSlot(i, columns),
-                          BoardLayout.LyingFaceUp);
+                PlaceTileFacingViewer(discards[i], displayIndex,
+                                      BoardLayout.DiscardSlot(i, columns));
         }
 
         void PlaceTile(int tileId, int displayIndex, Vector3 localPosition, Quaternion localRotation)
@@ -322,6 +285,20 @@ namespace Mahjong.View.Board
             var tile = TakeTile();
             tile.SetTile(tileId);
             tile.Place(position, rotation);
+        }
+
+        /// <summary>
+        /// 位置排在那一家面前，但牌本身一律轉成正面朝向玩家。
+        /// 照真實牌桌讓每家的牌朝向自己的話，對家打出的牌對玩家來說是上下顛倒的，
+        /// 根本看不出打了什麼。牌河與副露都是要給所有人看的資訊，可讀性優先。
+        /// </summary>
+        void PlaceTileFacingViewer(int tileId, int displayIndex, Vector3 localPosition)
+        {
+            var position = BoardLayout.SeatRotation(displayIndex) * localPosition;
+
+            var tile = TakeTile();
+            tile.SetTile(tileId);
+            tile.Place(position, BoardLayout.LyingFaceUp);
         }
 
         // ------------------------------------------------------------

@@ -9,8 +9,10 @@ namespace Mahjong.View
     // ============================================================
     // 吃碰槓聽胡的按鈕列
     //
-    // 六個位置固定不動：吃、碰、槓、聽、胡、過。
-    // 這一手做得到的才點得下去，做不到的變灰留在原位——
+    // **有得做的時候整排才出現**：這一手一個動作都做不到就整排不顯示，
+    // 免得畫面上永遠掛著一排灰按鈕。
+    // 出現之後六個位置固定不動：吃、碰、槓、聽、胡、過，
+    // 做得到的才點得下去，做不到的變灰留在原位——
     // 按鈕不會跳來跳去，玩家不必每次重新找。
     //
     // 吃可能有好幾種組法（手上 1245 條要吃 3 條，可組 123／234／345）。
@@ -70,7 +72,29 @@ namespace Mahjong.View
         {
             currentOptions = options;
             readyAvailable = canDeclareReady;
+
+            if (!HasAnythingToDo())
+            {
+                Hide();
+                return;
+            }
             ShowMainRow();
+        }
+
+        /// <summary>
+        /// 這一手有沒有任何可以按的東西。
+        /// 「過」單獨存在不算——輪到自己出牌時只會有出牌可選，
+        /// 那是點手牌處理的，不需要整排按鈕跑出來。
+        /// </summary>
+        bool HasAnythingToDo()
+        {
+            if (readyAvailable) return true;
+            if (currentOptions == null) return false;
+
+            foreach (var option in currentOptions)
+                if (option.Type != ActionType.Discard && option.Type != ActionType.Pass)
+                    return true;
+            return false;
         }
 
         public void Hide()

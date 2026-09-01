@@ -30,13 +30,16 @@ namespace Mahjong.View
         const float FaceInset = 7f;
 
         /// <summary>
-        /// 牌的頂面。實體牌從斜前方看得到一小條上緣，
-        /// 純平面的長方形少了這一條就會很像貼紙。
+        /// 牌下緣的厚度。實體牌看得到底下那一條側面，
+        /// 少了它就會很像一張貼紙。
+        ///
+        /// 之前是在「上緣」加一條亮藍色橫帶，但那條太寬又太藍，
+        /// 看起來像牌上面壓了一條色塊，反而更假。
+        /// 改成放在下緣、用比牌身深一階的同色系，才像厚度。
         /// </summary>
-        const float TopEdgeRatio = 0.14f;
+        const float BottomEdgeRatio = 0.10f;
 
-        static readonly Color TopEdgeColor = new Color(0.82f, 0.88f, 0.93f);
-        static readonly Color TopEdgeShadow = new Color(0.66f, 0.72f, 0.76f);
+        static readonly Color BottomEdgeColor = new Color(0.80f, 0.78f, 0.73f);
 
         static readonly Color BodyColor = new Color(0.955f, 0.945f, 0.905f);
         static readonly Color SelectedColor = new Color(1f, 0.90f, 0.62f);
@@ -124,12 +127,12 @@ namespace Mahjong.View
             UIFactory.Anchor(body.rectTransform, new Vector2(0.5f, 0f), new Vector2(0f, 0f),
                              new Vector2(x, 0f), TileSize);
 
-            AddTopEdge(body.transform);
+            AddBottomEdge(body.transform);
 
             var face = UIFactory.CreateImage("Face", body.transform, Color.white, rounded: false);
             face.sprite = Board.TileAssets.FaceSprite(tile);
             face.preserveAspect = true;
-            StretchBelowTopEdge(face.rectTransform);
+            StretchAboveBottomEdge(face.rectTransform);
 
             var button = body.gameObject.AddComponent<Button>();
             button.targetGraphic = body;
@@ -141,28 +144,23 @@ namespace Mahjong.View
             return new Entry { Tile = tile, Rect = body.rectTransform, Body = body };
         }
 
-        /// <summary>牌的頂面：一條亮色橫帶，下面再壓一條暗線當轉折</summary>
-        static void AddTopEdge(Transform parent)
+        /// <summary>牌下緣的厚度：一條比牌身深一階的橫帶</summary>
+        static void AddBottomEdge(Transform parent)
         {
-            float height = TileSize.y * TopEdgeRatio;
-
-            var top = UIFactory.CreateImage("TopEdge", parent, TopEdgeColor, rounded: false);
-            UIFactory.Anchor(top.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                             new Vector2(0f, -3f), new Vector2(TileSize.x - 8f, height));
-
-            var crease = UIFactory.CreateImage("TopCrease", parent, TopEdgeShadow, rounded: false);
-            UIFactory.Anchor(crease.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                             new Vector2(0f, -3f - height), new Vector2(TileSize.x - 8f, 2f));
+            var edge = UIFactory.CreateImage("BottomEdge", parent, BottomEdgeColor, rounded: false);
+            UIFactory.Anchor(edge.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                             new Vector2(0f, 3f),
+                             new Vector2(TileSize.x - 8f, TileSize.y * BottomEdgeRatio));
         }
 
-        /// <summary>牌面要讓出頂面那一條，不然會蓋住</summary>
-        static void StretchBelowTopEdge(RectTransform rect)
+        /// <summary>牌面要讓出下緣那一條，不然會蓋住</summary>
+        static void StretchAboveBottomEdge(RectTransform rect)
         {
-            float topInset = TileSize.y * TopEdgeRatio + 6f;
+            float bottomInset = TileSize.y * BottomEdgeRatio + 5f;
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(FaceInset, FaceInset);
-            rect.offsetMax = new Vector2(-FaceInset, -topInset);
+            rect.offsetMin = new Vector2(FaceInset, bottomInset);
+            rect.offsetMax = new Vector2(-FaceInset, -FaceInset);
         }
 
         // ------------------------------------------------------------
