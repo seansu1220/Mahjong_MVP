@@ -1,0 +1,897 @@
+<title>台灣十六張麻將原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  /* ── 色票：取自麻將牌本身 ────────────────────────────
+     牌面象牙、牌背與桌面的墨綠、三種花色的墨色（萬紅／筒藍／條綠）    */
+  :root {
+    --ground:      #F1F4F0;
+    --surface:     #FBFCFA;
+    --surface-alt: #E8EDE7;
+    --line:        #D2DAD1;
+    --line-soft:   #E2E8E1;
+    --ink:         #16241C;
+    --ink-soft:    #4C5B51;
+    --ink-faint:   #7C8A81;
+    --accent:      #1C6B45;
+    --accent-soft: #E3EFE8;
+    --wan:         #A62E27;
+    --tong:        #2C4F91;
+    --tiao:        #2C7A46;
+    --tile-face:   #F6F4EC;
+    --tile-back:   #2E9B62;
+
+    --shadow: 0 1px 2px rgba(22, 36, 28, .05), 0 8px 24px -12px rgba(22, 36, 28, .18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0D1712;
+      --surface:     #141F19;
+      --surface-alt: #1B2820;
+      --line:        #2C3B32;
+      --line-soft:   #223028;
+      --ink:         #E4EAE4;
+      --ink-soft:    #A8B5AC;
+      --ink-faint:   #7A897F;
+      --accent:      #5CB98A;
+      --accent-soft: #1A2E23;
+      --wan:         #E0736B;
+      --tong:        #7BA1E0;
+      --tiao:        #6BBE87;
+      --tile-face:   #E9E7DE;
+      --tile-back:   #2E9B62;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #0D1712;
+    --surface:     #141F19;
+    --surface-alt: #1B2820;
+    --line:        #2C3B32;
+    --line-soft:   #223028;
+    --ink:         #E4EAE4;
+    --ink-soft:    #A8B5AC;
+    --ink-faint:   #7A897F;
+    --accent:      #5CB98A;
+    --accent-soft: #1A2E23;
+    --wan:         #E0736B;
+    --tong:        #7BA1E0;
+    --tiao:        #6BBE87;
+    --tile-face:   #E9E7DE;
+    --tile-back:   #2E9B62;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-weight: 300;
+    line-height: 1.85;
+    letter-spacing: .01em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 0 1.75rem 6rem;
+  }
+
+  /* ── 頁首：一條牌的側面（象牙面板疊在綠色牌身上）─────────── */
+  .tile-edge {
+    height: 9px;
+    background: linear-gradient(var(--tile-face) 0 3px, var(--tile-back) 3px 100%);
+  }
+
+  header.masthead {
+    padding: 3.5rem 0 2.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .75rem;
+    font-weight: 500;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-family: "Noto Serif TC", "Songti TC", serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 5vw, 3rem);
+    line-height: 1.25;
+    letter-spacing: .02em;
+    text-wrap: balance;
+    margin: 0 0 .85rem;
+  }
+
+  .standfirst {
+    font-size: 1.0625rem;
+    color: var(--ink-soft);
+    max-width: 40rem;
+    margin: 0;
+  }
+
+  /* ── 摘要規格 ───────────────────────────────────── */
+  .factsheet {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    margin: 2.5rem 0 0;
+  }
+
+  .fact {
+    background: var(--surface);
+    padding: 1.05rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+  }
+
+  .fact dt {
+    font-size: .75rem;
+    letter-spacing: .12em;
+    color: var(--ink-faint);
+    font-weight: 400;
+  }
+
+  .fact dd {
+    margin: 0;
+    font-weight: 500;
+    font-size: .9375rem;
+    line-height: 1.5;
+  }
+
+  /* ── 章節 ──────────────────────────────────────── */
+  section { margin-top: 4rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: .85rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: .7rem;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .sec-num {
+    font-family: "Noto Serif TC", serif;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--accent);
+    flex: none;
+  }
+
+  h2 {
+    font-family: "Noto Serif TC", "Songti TC", serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: .03em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: "Noto Sans TC", sans-serif;
+    font-weight: 700;
+    font-size: 1.0625rem;
+    letter-spacing: .04em;
+    margin: 2.25rem 0 .85rem;
+  }
+
+  p { max-width: 44rem; margin: 0 0 1.1rem; }
+  p.lede { color: var(--ink-soft); }
+  section > p:last-child { margin-bottom: 0; }
+
+  strong { font-weight: 700; }
+  em { font-style: normal; color: var(--accent); font-weight: 500; }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .8125em;
+    background: var(--surface-alt);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: .1em .35em;
+    white-space: nowrap;
+  }
+
+  /* ── 表格 ──────────────────────────────────────── */
+  .scroller {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    margin-bottom: 1.25rem;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 30rem;
+    font-size: .9375rem;
+  }
+
+  thead th {
+    background: var(--surface-alt);
+    font-weight: 500;
+    font-size: .75rem;
+    letter-spacing: .14em;
+    color: var(--ink-faint);
+    text-align: left;
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+
+  td.name { font-weight: 500; white-space: nowrap; }
+  td.note { color: var(--ink-soft); font-size: .875rem; }
+
+  td.tai {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    text-align: right;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+
+  /* ── 花色墨色 ──────────────────────────────────── */
+  .suits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .suits li {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: .45rem .85rem;
+    font-size: .875rem;
+  }
+
+  .suits .glyph {
+    font-family: "Noto Serif TC", serif;
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .suits .count {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    font-size: .8125rem;
+  }
+
+  .s-wan  .glyph { color: var(--wan); }
+  .s-tong .glyph { color: var(--tong); }
+  .s-tiao .glyph { color: var(--tiao); }
+  .s-zi   .glyph { color: var(--ink); }
+  .s-hua  .glyph { color: var(--accent); }
+
+  /* ── 範圍：做／不做 ─────────────────────────────── */
+  .scope {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: 1.25rem;
+  }
+
+  .scope-col {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 1.35rem 1.5rem 1.5rem;
+  }
+
+  .scope-col h3 {
+    margin: 0 0 .9rem;
+    font-size: .8125rem;
+    letter-spacing: .16em;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+
+  .scope-col ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+  }
+
+  .scope-col li {
+    display: flex;
+    gap: .65rem;
+    font-size: .9375rem;
+    line-height: 1.6;
+  }
+
+  .scope-col li::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    margin-top: .62em;
+    background: var(--accent);
+  }
+
+  .scope-col.out li::before { background: var(--line); }
+  .scope-col.out li { color: var(--ink-soft); }
+
+  /* ── 爭議判定的對照 ─────────────────────────────── */
+  .choice {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    margin-bottom: 1.25rem;
+  }
+
+  .choice-head {
+    padding: 1rem 1.35rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+
+  .choice-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: .03em;
+  }
+
+  .choice-head .flag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .6875rem;
+    letter-spacing: .1em;
+    color: var(--ink-faint);
+  }
+
+  .choice-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  }
+
+  .choice-body > div { padding: 1.1rem 1.35rem 1.25rem; }
+  .choice-body > div + div { border-left: 1px solid var(--line-soft); }
+
+  .choice-body .picked { background: var(--accent-soft); }
+
+  .choice-label {
+    font-size: .6875rem;
+    letter-spacing: .16em;
+    color: var(--ink-faint);
+    margin: 0 0 .5rem;
+    font-weight: 500;
+  }
+
+  .choice-body .picked .choice-label { color: var(--accent); }
+
+  .choice-body p {
+    margin: 0;
+    font-size: .9375rem;
+    line-height: 1.65;
+  }
+
+  .choice-why {
+    padding: 1rem 1.35rem;
+    border-top: 1px solid var(--line-soft);
+    font-size: .875rem;
+    color: var(--ink-soft);
+  }
+
+  .choice-why p { margin: 0; font-size: inherit; max-width: none; }
+
+  /* ── 流程 ──────────────────────────────────────── */
+  ol.flow {
+    counter-reset: step;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  ol.flow li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 2.75rem 1fr;
+    gap: 1rem;
+    padding: .95rem 0;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+
+  ol.flow li:last-child { border-bottom: 0; }
+
+  ol.flow li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .8125rem;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  ol.flow strong { display: block; }
+  ol.flow span { color: var(--ink-soft); font-size: .9375rem; }
+
+  /* ── 未實作項目 ─────────────────────────────────── */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .chips li {
+    border: 1px dashed var(--line);
+    color: var(--ink-soft);
+    padding: .3rem .7rem;
+    font-size: .875rem;
+  }
+
+  /* ── 附註 ──────────────────────────────────────── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 1.1rem 1.35rem;
+    margin: 0 0 1.25rem;
+  }
+
+  .callout p { margin: 0; font-size: .9375rem; }
+  .callout p + p { margin-top: .7rem; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: .8125rem;
+  }
+
+  footer p { margin: 0 0 .35rem; max-width: none; }
+
+  @media (max-width: 40rem) {
+    .page { padding: 0 1.15rem 4rem; }
+    header.masthead { padding-top: 2.5rem; }
+    ol.flow li { grid-template-columns: 2rem 1fr; gap: .75rem; }
+  }
+</style>
+
+<div class="tile-edge"></div>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Prototype Specification</p>
+    <h1>台灣十六張麻將原型</h1>
+    <p class="standfirst">
+      單機四人對局的網頁版原型。這份文件說明原型涵蓋的範圍，
+      以及計分引擎所依據的完整規則規格——<em>表上列出的照做，表上沒有的一律不實作</em>。
+    </p>
+
+    <dl class="factsheet">
+      <div class="fact"><dt>玩法</dt><dd>台灣 16 張・四人單機</dd></div>
+      <div class="fact"><dt>平台</dt><dd>網頁（Unity WebGL）</dd></div>
+      <div class="fact"><dt>對手</dt><dd>三家電腦 AI</dd></div>
+      <div class="fact"><dt>計分</dt><dd>底 100 ＋ 台數 × 100</dd></div>
+      <div class="fact"><dt>規則基準</dt><dd>各地最普遍的算法</dd></div>
+      <div class="fact"><dt>規則引擎測試</dt><dd>104 項全數通過</dd></div>
+    </dl>
+  </header>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">一</span><h2>這份原型要證明什麼</h2></div>
+
+    <p class="lede">
+      原型的目的是讓您實際玩到一局完整的十六張，並確認兩件事：
+      <strong>規則判定正確</strong>，以及<strong>規則可以照您的算法調整</strong>。
+      它不是完整產品，畫面與功能都以「說明得清楚」為優先。
+    </p>
+
+    <div class="scope">
+      <div class="scope-col">
+        <h3>原型包含</h3>
+        <ul>
+          <li>完整一局：洗牌、發牌、補花、摸打、吃碰槓、聽牌、胡牌、流局</li>
+          <li>台數計算與結算畫面，逐項列出台數來源</li>
+          <li>三家電腦 AI 自動打牌（會判斷聽牌與出牌安全度）</li>
+          <li>3D 牌桌與牌張，牌面、材質全部程式生成</li>
+          <li>整套規則以設定表驅動，改算法不必改程式</li>
+        </ul>
+      </div>
+      <div class="scope-col out">
+        <h3>原型不包含（屬後續付費階段）</h3>
+        <ul>
+          <li>連線對戰、房間與配對</li>
+          <li>帳號系統與資料保存</li>
+          <li>賽制管理（一將、東南風、積分）</li>
+          <li>金流與虛擬貨幣</li>
+          <li>精緻美術、音效、動畫演出</li>
+          <li>手機直式版面</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">二</span><h2>一局怎麼跑</h2></div>
+
+    <ol class="flow">
+      <li><strong>洗牌與發牌</strong><span>144 張洗妥後圍成牌山。莊家 17 張，其餘三家各 16 張。</span></li>
+      <li><strong>補花</strong><span>手上或摸到的花牌自動從牌山尾端補牌，補到不是花為止。</span></li>
+      <li><strong>輪流摸打</strong><span>逆時針進行。輪到您時點兩下打出，剛摸進來的那張會與手牌分開顯示。</span></li>
+      <li><strong>宣告動作</strong><span>可以吃、碰、槓、胡時，畫面下方出現對應按鈕；不能做的動作以灰色呈現。</span></li>
+      <li><strong>優先權裁決</strong><span>胡優先於碰槓，碰槓優先於吃；多家可胡時，逆時針方向離打牌者近的先胡。</span></li>
+      <li><strong>結算</strong><span>胡牌後攤出贏家牌型，逐項列出台數與應收點數。牌山抽乾則流局。</span></li>
+    </ol>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">三</span><h2>基本設定</h2></div>
+
+    <ul class="suits">
+      <li class="s-wan"><span class="glyph">萬</span><span class="count">1–9・各 4 張</span></li>
+      <li class="s-tong"><span class="glyph">筒</span><span class="count">1–9・各 4 張</span></li>
+      <li class="s-tiao"><span class="glyph">條</span><span class="count">1–9・各 4 張</span></li>
+      <li class="s-zi"><span class="glyph">字</span><span class="count">東南西北中發白・各 4 張</span></li>
+      <li class="s-hua"><span class="glyph">花</span><span class="count">8 張・各 1 張</span></li>
+    </ul>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>項目</th><th>本專案採用</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">底</td><td>100 點</td></tr>
+          <tr><td class="name">每台</td><td>100 點</td></tr>
+          <tr><td class="name">應收點數</td><td>底 ＋ 台數 × 每台</td></tr>
+          <tr><td class="name">總牌數</td><td>144 張</td></tr>
+          <tr><td class="name">發牌</td><td>莊家 17 張、閒家 16 張</td></tr>
+          <tr><td class="name">胡牌型</td><td>5 組面子 ＋ 1 對將</td></tr>
+          <tr><td class="name">七對子</td><td><strong>不成立</strong></td></tr>
+          <tr><td class="name">補花</td><td>摸到花自動從牌山尾端補，補到不是花為止</td></tr>
+          <tr><td class="name">吃</td><td>只有打牌者的<strong>下家</strong>能吃</td></tr>
+          <tr><td class="name">動作優先權</td><td>胡 &gt; 碰／槓 &gt; 吃</td></tr>
+          <tr><td class="name">多家可胡</td><td>逆時針方向離打牌者近者優先</td></tr>
+          <tr><td class="name">流局</td><td>牌山抽乾</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">四</span><h2>台數表</h2></div>
+
+    <p class="lede">
+      這張表就是規格書。程式裡不會出現任何台數數字，全部由設定檔提供；
+      要改台數或增減項目，改的是設定，不是程式邏輯。
+    </p>
+
+    <h3>基本</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>台數項目</th><th style="text-align:right">台</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="name">門清</td><td class="tai">1</td><td class="note">沒有吃、碰、明槓。暗槓不破門清</td></tr>
+          <tr><td class="name">自摸</td><td class="tai">1</td><td class="note">—</td></tr>
+          <tr><td class="name">門清自摸加</td><td class="tai">1</td><td class="note">門清且自摸時額外再加，合計 3 台</td></tr>
+          <tr><td class="name">莊家</td><td class="tai">1</td><td class="note">莊家胡牌或被胡都算</td></tr>
+          <tr><td class="name">連莊拉莊</td><td class="tai">2 / 次</td><td class="note">連 N 拉 N，共 2N 台</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>牌型</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>台數項目</th><th style="text-align:right">台</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="name">平胡</td><td class="tai">2</td><td class="note">全順子、將是數牌、非自摸，且必須兩面聽</td></tr>
+          <tr><td class="name">碰碰胡</td><td class="tai">4</td><td class="note">五組全是刻子或槓</td></tr>
+          <tr><td class="name">混一色</td><td class="tai">4</td><td class="note">單一花色 ＋ 字牌</td></tr>
+          <tr><td class="name">清一色</td><td class="tai">8</td><td class="note">單一花色，完全無字牌</td></tr>
+          <tr><td class="name">字一色</td><td class="tai">16</td><td class="note">全部字牌</td></tr>
+          <tr><td class="name">五暗刻</td><td class="tai">8</td><td class="note">五組暗刻。放槍完成的那組算明刻，不計入</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>字牌</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>台數項目</th><th style="text-align:right">台</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="name">門風</td><td class="tai">1</td><td class="note">自己門風的刻子。莊家為東，逆時針依序南西北</td></tr>
+          <tr><td class="name">圈風</td><td class="tai">1</td><td class="note">當圈風牌的刻子</td></tr>
+          <tr><td class="name">三元牌</td><td class="tai">1 / 組</td><td class="note">中、發、白的刻子</td></tr>
+          <tr><td class="name">小三元</td><td class="tai">4</td><td class="note">兩組三元刻子 ＋ 一對三元將</td></tr>
+          <tr><td class="name">大三元</td><td class="tai">8</td><td class="note">中發白三組刻子</td></tr>
+          <tr><td class="name">小四喜</td><td class="tai">8</td><td class="note">三組風刻 ＋ 一對風將</td></tr>
+          <tr><td class="name">大四喜</td><td class="tai">16</td><td class="note">東南西北四組風刻</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>情境</h3>
+    <div class="scroller">
+      <table>
+        <thead><tr><th>台數項目</th><th style="text-align:right">台</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="name">獨聽</td><td class="tai">1</td><td class="note">胡牌前只聽一張</td></tr>
+          <tr><td class="name">槓上開花</td><td class="tai">1</td><td class="note">槓後補牌自摸</td></tr>
+          <tr><td class="name">海底撈月</td><td class="tai">1</td><td class="note">摸最後一張牌自摸</td></tr>
+          <tr><td class="name">花牌</td><td class="tai">1 / 張</td><td class="note">含正花，每張一律 1 台</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">五</span><h2>四個各地差異最大的判定</h2></div>
+
+    <p class="lede">
+      以下四項是各地算法分歧最大的地方。我們先選定一種做進原型，
+      並把另一種常見算法也列出來——每一項都是<strong>一個設定開關</strong>，
+      您要改成哪一種都只是改設定值。
+    </p>
+
+    <div class="choice">
+      <div class="choice-head">
+        <h3>正花是否另外加台</h3>
+        <span class="flag">ZhengHuaStacksWithFlower</span>
+      </div>
+      <div class="choice-body">
+        <div class="picked">
+          <p class="choice-label">原型採用</p>
+          <p>所有花牌一律每張 1 台，正花不再多加。</p>
+        </div>
+        <div>
+          <p class="choice-label">另一種常見算法</p>
+          <p>正花額外再加 1 台，一張正花共 2 台。</p>
+        </div>
+      </div>
+      <div class="choice-why"><p>花牌共 8 張，每個座位對應其中 2 張稱為正花。採每張 1 台最單純，也最好向玩家解釋。</p></div>
+    </div>
+
+    <div class="choice">
+      <div class="choice-head">
+        <h3>大牌是否重複計入小牌</h3>
+        <span class="flag">DragonTilesCountWithBigDragons ／ WindTilesCountWithBigWinds</span>
+      </div>
+      <div class="choice-body">
+        <div class="picked">
+          <p class="choice-label">原型採用</p>
+          <p>大三元、小三元成立時不再另計三元牌；大四喜、小四喜成立時不再另計門風與圈風。</p>
+        </div>
+        <div>
+          <p class="choice-label">另一種常見算法</p>
+          <p>大牌之外，裡面的每一組字牌刻子仍各自計台。</p>
+        </div>
+      </div>
+      <div class="choice-why"><p>大三元 8 台本身就是「湊齊中發白三組刻子」的獎勵，再把三組三元牌各 1 台加上去，等於同一件事算兩次。</p></div>
+    </div>
+
+    <div class="choice">
+      <div class="choice-head">
+        <h3>平胡是否要求兩面聽</h3>
+        <span class="flag">PinghuRequiresTwoSidedWait</span>
+      </div>
+      <div class="choice-body">
+        <div class="picked">
+          <p class="choice-label">原型採用</p>
+          <p>要求全順子、將是數牌、非自摸，<strong>且必須兩面聽</strong>。邊張、嵌張、單吊、對倒都不算平胡。</p>
+        </div>
+        <div>
+          <p class="choice-label">另一種常見算法</p>
+          <p>不要求兩面聽，只要全順子即可。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="choice">
+      <div class="choice-head">
+        <h3>平胡是否要求無花</h3>
+        <span class="flag">未實作</span>
+      </div>
+      <div class="choice-body">
+        <div class="picked">
+          <p class="choice-label">原型採用</p>
+          <p>有花牌仍可算平胡。</p>
+        </div>
+        <div>
+          <p class="choice-label">另一種算法</p>
+          <p>手上有花就不算平胡。屬少數規則，原型未實作；若貴方採用此算法，列為加項。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">六</span><h2>明刻與暗刻的認定</h2></div>
+
+    <p>這一條會直接影響五暗刻等台數，特別說明。</p>
+
+    <div class="scroller">
+      <table>
+        <thead><tr><th>取得方式</th><th>認定</th></tr></thead>
+        <tbody>
+          <tr><td class="name">自摸完成的刻子</td><td>暗刻</td></tr>
+          <tr><td class="name">放槍完成的刻子</td><td><strong>明刻</strong></td></tr>
+          <tr><td class="name">暗槓</td><td>暗刻，且不破門清</td></tr>
+          <tr><td class="name">明槓、碰</td><td>明刻</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p>當一副牌有多種拆解方式時，程式取<strong>台數最高</strong>的那一種。</p>
+      <p>放槍時若胡牌張同時可解釋成順子或刻子，優先解釋為順子，讓其他刻子保有暗刻身分——這與「取最高台」的慣例一致。</p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">七</span><h2>聽牌宣告（操作功能，不計台）</h2></div>
+
+    <p>
+      畫面上提供一個「聽」按鈕：當您打掉剛摸的那張之後仍然聽牌時才會出現。
+      按下之後牌型固定，往後每一輪自動打掉摸進來的牌，只有能胡才會停下來，也不再吃碰槓。
+    </p>
+    <p>
+      這純粹是<strong>操作上的便利</strong>，方便展示時快速把一局打完，<strong>沒有任何台數效果</strong>。
+      台灣十六張沒有日本麻將的立直，本專案也不實作，台數表裡沒有這一項。
+    </p>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">八</span><h2>未列入的台數</h2></div>
+
+    <p class="lede">
+      以下常見台數未列入本表，因此原型<strong>不實作</strong>。
+      若貴方的算法需要其中任何一項，屬於加項，可個別評估。
+    </p>
+
+    <ul class="chips">
+      <li>天胡</li><li>地胡</li><li>人胡</li><li>八仙過海</li><li>七搶一</li>
+      <li>花槓</li><li>搶槓胡</li><li>槓上炮</li><li>全求人</li><li>三暗刻</li>
+      <li>四暗刻</li><li>混老頭</li><li>清老頭</li><li>綠一色</li><li>九蓮寶燈</li><li>十三么</li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        列出這一段不是為了推卸，而是因為<strong>算得清楚才報得準</strong>。
+        台數表列出的照做，沒列的不實作——這是雙方對「做完了」有共同認知的前提。
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">九</span><h2>技術架構</h2></div>
+
+    <div class="scroller">
+      <table>
+        <thead><tr><th>項目</th><th>內容</th></tr></thead>
+        <tbody>
+          <tr><td class="name">引擎</td><td>Unity 2022 LTS，建置目標 WebGL</td></tr>
+          <tr><td class="name">部署</td><td>Firebase Hosting，開啟網址即可試玩，免安裝</td></tr>
+          <tr><td class="name">規則引擎</td><td>純 C＃，不依賴 Unity。可原封不動移到伺服器做權威判定</td></tr>
+          <tr><td class="name">台數設定</td><td>集中於一份設定表，程式中不出現台數數字</td></tr>
+          <tr><td class="name">美術素材</td><td>牌張、牌面、材質全部由程式生成</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>兩個對後續開發重要的設計決定</h3>
+
+    <div class="callout">
+      <p>
+        <strong>規則引擎與畫面完全分離。</strong>
+        判定胡牌、算台、判斷聽牌的程式碼不含任何 Unity 相關的東西。
+        將來要做連線對戰時，同一份程式可以直接放到伺服器上當作權威判定，
+        不必為了防作弊重寫一次規則。
+      </p>
+    </div>
+
+    <div class="callout">
+      <p>
+        <strong>不使用外部麻將牌素材。</strong>
+        網路上流通的麻將牌圖多為 CC BY-SA 授權，帶有相同方式分享的義務，
+        商業營運有風險。原型的每一張牌都是程式即時生成的 3D 物件與貼圖，
+        授權完全乾淨，日後要換成正式美術也只是替換素材。
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">十</span><h2>規則引擎怎麼驗證</h2></div>
+
+    <p class="lede">
+      規則寫錯不會當機，只會默默算錯台——所以驗證方式必須是可重複執行的，而不是靠人工試玩。
+    </p>
+
+    <div class="scroller">
+      <table>
+        <thead><tr><th>驗證項目</th><th>方式</th></tr></thead>
+        <tbody>
+          <tr><td class="name">單元測試</td><td>104 項，涵蓋胡牌判定、聽牌、每一項台數與四個爭議判定的兩種設定，目前全數通過</td></tr>
+          <tr><td class="name">交叉驗證</td><td>以兩套獨立演算法對 40,000 副隨機牌型互相比對，結果必須一致</td></tr>
+          <tr><td class="name">牌張守恆</td><td>模擬對局的每一步都檢查場上總牌數恆為 144 張</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      任何規則異動之後，這三項都必須重跑並全數通過才算完成。
+      這也代表：<strong>調整台數設定不會有連帶風險</strong>，改完跑一次測試就知道有沒有影響到別的判定。
+    </p>
+  </section>
+
+  <!-- ─────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">十一</span><h2>目前進度</h2></div>
+
+    <div class="scroller">
+      <table>
+        <thead><tr><th>項目</th><th>狀態</th></tr></thead>
+        <tbody>
+          <tr><td class="name">規則引擎（胡牌、聽牌、台數）</td><td>完成，測試全綠</td></tr>
+          <tr><td class="name">牌局流程與動作優先權</td><td>完成</td></tr>
+          <tr><td class="name">電腦 AI</td><td>完成</td></tr>
+          <tr><td class="name">3D 牌桌與操作介面</td><td>完成，持續調整視覺細節</td></tr>
+          <tr><td class="name">WebGL 建置與線上部署</td><td>進行中</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      線上試玩版完成後會提供網址，屆時可直接在瀏覽器開啟，
+      對照本文件的台數表逐項確認判定是否符合貴方的算法。
+    </p>
+  </section>
+
+  <footer>
+    <p>台灣十六張麻將・單機原型規格</p>
+    <p>本文件所列規則即為程式實作依據；如需依貴方算法調整，請以本文件為對照逐項標註。</p>
+  </footer>
+
+</div>

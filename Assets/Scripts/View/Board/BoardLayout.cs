@@ -44,17 +44,11 @@ namespace Mahjong.View.Board
         public static float MeldStep => (TileAssets.Width + 0.004f) * MeldTileScale;
         public static float MeldGroupGap => 0.075f * MeldTileScale;
 
-        /// <summary>左右兩家的副露也是往畫面深處排的，理由同 DiscardStepAway</summary>
-        public static float SideMeldStep => StepShowingSeam(MeldTileScale, MeldSeamHeight);
-
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
         public static float DiscardStepX => (TileAssets.Width + 0.024f) * DiscardTileScale;
 
         /// <summary>牌河：後面那張牌的綠色側邊，在畫面上要露出來多高</summary>
         const float DiscardSeamHeight = 0.025f;
-
-        /// <summary>副露是一組一組緊靠著的，縫再細一點</summary>
-        const float MeldSeamHeight = 0.014f;
 
         /// <summary>
         /// 往畫面深處排的那個方向要留多少間距。
@@ -234,15 +228,13 @@ namespace Mahjong.View.Board
             => displayIndex == 1 || displayIndex == 3;
 
         /// <summary>
-        /// 排列間距要看牌在那個方向上實際佔多寬。
+        /// 副露的排列間距。
         ///
-        /// 桌上的牌一律轉成正面朝向玩家，不再跟著座位旋轉，
-        /// 所以左右兩家沿著自己本地 X 排的時候，那個方向對應到的是世界 Z，
-        /// 也就是往畫面深處排——要用 DiscardStepAway 那套算法，
-        /// 沿用牌寬的間距牌會互相遮住，看起來連成一整條。
+        /// 左右兩家的副露跟著座位轉，跟真牌桌一樣橫著擺在自己面前；
+        /// 上下兩家則轉成正面朝向玩家（對家若照真實方向擺，字會上下顛倒）。
+        /// 兩種擺法牌在排列方向上佔的都是牌寬，所以間距是同一個。
         /// </summary>
-        public static float MeldStepFor(int displayIndex)
-            => IsSideSeat(displayIndex) ? SideMeldStep : MeldStep;
+        public static float MeldStepFor(int displayIndex) => MeldStep;
 
         /// <summary>
         /// 牌河要排幾欄。四家一律固定欄數，牌打多了往桌心多排一列。

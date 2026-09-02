@@ -283,7 +283,12 @@ namespace Mahjong.View.Board
             return width - BoardLayout.MeldGroupGap;
         }
 
-        /// <summary>副露平躺攤在自己面前，被吃碰走的那張排在整組中間。</summary>
+        /// <summary>
+        /// 副露平躺攤在自己面前，被吃碰走的那張排在整組中間。
+        ///
+        /// 左右兩家跟著座位轉，就跟真牌桌上擺在自己面前一樣，字是側著的但看得懂；
+        /// 對家則要轉成正面朝向玩家，照真實方向擺的話字會上下顛倒。
+        /// </summary>
         void DrawMelds(List<Meld> melds, int displayIndex, float scale, float cursor)
         {
             float step = BoardLayout.MeldStepFor(displayIndex) * scale;
@@ -295,7 +300,11 @@ namespace Mahjong.View.Board
                 foreach (int tileId in layout.Tiles)
                 {
                     var local = BoardLayout.MeldSlot(cursor + step * 0.5f, tileScale);
-                    PlaceTileFacingViewer(tileId, displayIndex, local, tileScale);
+
+                    if (BoardLayout.IsSideSeat(displayIndex))
+                        PlaceTile(tileId, displayIndex, local, BoardLayout.LyingFaceUp, tileScale);
+                    else
+                        PlaceTileFacingViewer(tileId, displayIndex, local, tileScale);
                     cursor += step;
                 }
                 cursor += BoardLayout.MeldGroupGap * scale;
