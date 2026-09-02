@@ -170,6 +170,7 @@ cd tools/CoreTests && dotnet run
 - [x] 自己的手牌用 2D 顯示（HandStrip，共用 3D 的牌面貼圖）
 - [x] 2D 介面 Bootstrap.cs / ActionButtons.cs / ResultView.cs / AnnouncementView.cs
 - [ ] 洗牌發牌與摸牌動畫（改 3D 後需重做）
-- [ ] 中文字型 Assets/Resources/MahjongFont.ttf（WebGL 必需，見 docs/CHANGELOG.md）
-- [ ] Standard 著色器加入 Always Included Shaders（WebGL 必需）
-- [ ] WebGL build 與 Firebase 部署
+- [x] 中文字型 Assets/Resources/MahjongFont.ttf（Noto Sans TC 子集化 174 KB，見 docs/THIRD_PARTY_NOTICES.md）
+- [x] Standard 著色器加入 Always Included Shaders（由 Assets/Editor/WebGLBuild.cs 每次建置自動確保）
+- [x] WebGL build（`Mahjong ▸ Build WebGL` 或命令列 -executeMethod）
+- [ ] Firebase 部署（待建立專案並 firebase login）

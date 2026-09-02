@@ -2247,3 +2247,91 @@ Core 測試維持 **104 項全綠**。牌距另以算式逐項驗算過（見第
 - 擲骰開門：**不模擬**。牌山洗好後直接依序摸牌，開門位置僅作畫面呈現
 
 `docs/CLIENT_BRIEF.html` 同步更新。
+
+---
+
+## 2026-09-03（第十八次）　WebGL 上線前置：內嵌中文字型、防著色器剝除、建置腳本
+
+### 一、中文字型（WebGL 的頭號阻斷點）
+
+**問題描述**
+`UiFont` 目前的順位是「專案內字型 → 作業系統字型 → Unity 內建 LegacyRuntime」。
+開發時走的是第二順位，抓到本機的微軟正黑體，所以編輯器裡中文正常。
+但 **WebGL 跑在瀏覽器沙箱裡，取不到任何作業系統字型**，
+建置出去會直接掉到 LegacyRuntime（無中文字符），整個畫面的中文變成空白方框——
+而且在編輯器裡永遠看不出來。
+
+**為什麼不直接內嵌微軟正黑體**
+它隨 Windows 授權，**不得重新散布**。包進要對外營運的網頁會構成侵權。
+
+**修改內容**
+改用 SIL OFL 1.1 的 Noto Sans TC（商業使用、散布皆允許）。
+原始檔是 11.9 MB 的可變字型，直接內嵌太肥，處理成：
+
+```
+原始可變字型            11.9 MB
+ → 定格 Regular(400)     7.1 MB
+ → 子集化                174 KB   ← 實際進版控的
+```
+
+子集的字元清單是掃描 `Assets/Scripts/` 底下所有 `.cs` 的**字串常值**取出的，
+共 483 個字元（含 ASCII），並額外驗證關鍵字（萬筒條東發白莊風圈聽碰槓胡…）無一缺漏。
+
+> **日後新增中文字串必須重新產生子集字型**，否則新字顯示不出來。
+> 步驟記在 `docs/THIRD_PARTY_NOTICES.md`。
+
+新增檔案：`Assets/Resources/MahjongFont.ttf`、`docs/licenses/OFL.txt`、
+`docs/THIRD_PARTY_NOTICES.md`。
+
+---
+
+### 二、著色器被剝除
+
+**問題描述**
+專案開了 Strip Engine Code，而牌的材質全部是執行期用 `Shader.Find("Standard")` 建的，
+建置時掃不到任何引用，`Standard` 會被整包剝掉——結果是所有的牌變成紫色。
+
+**修改內容**
+沒有手動去改 `ProjectSettings/GraphicsSettings.asset`（那裡面的 fileID 用猜的很危險），
+改成由 `Assets/Editor/WebGLBuild.cs` 在每次建置前用 `SerializedObject` 檢查並補齊。
+實際建置 log 確認：`已把執行期著色器加入 Always Included Shaders：Standard、Unlit/Texture`
+（`Sprites/Default` 與 `UI/Default` 本來就在）。
+
+---
+
+### 三、建置腳本
+
+新增 `Assets/Editor/WebGLBuild.cs`，同時提供選單與命令列進入點：
+
+```
+Unity.exe -batchmode -projectPath <專案> ^
+  -executeMethod Mahjong.EditorTools.WebGLBuild.BuildFromCommandLine -logFile <log>
+```
+
+建置設定由程式每次重套，不依賴任何人記得去介面上勾：
+IL2CPP、無多執行緒、Gzip 壓縮並開啟 **decompressionFallback**、
+例外只保留明確拋出的、Managed Stripping 設為 Low。
+另外會把字型授權 `OFL.txt` 複製進輸出目錄一起部署（OFL 的散布義務）。
+
+**首次建置結果**：成功，輸出 14 MB（data 8.6 MB、wasm 5.9 MB），字型佔 174.7 KB。
+
+---
+
+### 四、Firebase 設定
+
+新增 `firebase.json` 與 `.firebaserc`（專案 ID 待填）。
+
+**一個差點做錯的地方**：原本照常見範例替 `*.gz` 設了 `Content-Encoding: gzip`。
+但因為開了 decompressionFallback，Unity 產出的檔名是 **`.unityweb`** 而不是 `.gz`，
+且解壓是由 Unity 的 loader 自己做的。
+若對這些檔案宣告 `Content-Encoding`，瀏覽器會先解一次、Unity 再解一次，直接壞掉。
+已改成只設 `Cache-Control`，並在設定檔內註明原因。
+
+`.gitignore` 補上 `[Bb]uild/`、`.firebase/`、`firebase-debug.log`。
+
+---
+
+### 五、驗證方式
+
+Unity 批次建置離開碼 0；log 確認著色器已加入、字型已打包。
+Firebase 部署待建立專案並登入後執行。

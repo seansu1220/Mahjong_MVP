@@ -1,0 +1,22 @@
+{
+  "hosting": {
+    "public": "Build/WebGL",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "//": "Unity 開了 decompressionFallback，壓縮檔名為 .unityweb，由 Unity 的 loader 自己解壓。這裡絕對不能宣告 Content-Encoding：宣告了瀏覽器會先解一次，Unity 再解一次就壞掉。",
+        "source": "**/*.unityweb",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "/Build/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "//": "入口頁不快取，重新部署後使用者才會拿到新版",
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}

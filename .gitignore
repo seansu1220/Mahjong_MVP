@@ -40,3 +40,7 @@ crashlytics-build.properties
 !tools/**/*.csproj
 tools/**/[Bb]in/
 tools/**/[Oo]bj/
+
+# Firebase 部署
+.firebase/
+firebase-debug.log
