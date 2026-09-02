@@ -26,16 +26,29 @@ namespace Mahjong.View.Board
     {
         public const int SeatCount = GameState.PlayerCount;
 
+        // ---- 桌上各種牌的大小 ----
+        //
+        // 手牌是原尺寸；牌河與副露的牌都縮小一號。
+        // 四家的牌河要塞進牌山圍出來的方框裡，原尺寸排到後面一定會互相重疊
+        // （每家最多會打出約 20 張）。縮小之後才排得下，
+        // 而且剛打出的那張本來就有紫框放大顯示，牌河小一點不影響判讀。
+
+        /// <summary>牌河的牌相對於手牌的大小</summary>
+        public const float DiscardTileScale = 0.66f;
+
+        /// <summary>副露的牌相對於手牌的大小</summary>
+        public const float MeldTileScale = 0.80f;
+
         // ---- 排列間距 ----
         public const float HandStep = TileAssets.Width + 0.006f;
-        public const float MeldStep = TileAssets.Width + 0.004f;
-        public const float MeldGroupGap = 0.075f;
+        public static float MeldStep => (TileAssets.Width + 0.004f) * MeldTileScale;
+        public static float MeldGroupGap => 0.075f * MeldTileScale;
 
         /// <summary>左右兩家的副露也是往畫面深處排的，理由同 DiscardStepAway</summary>
-        public static float SideMeldStep => StepShowingSeam(MeldSeamHeight);
+        public static float SideMeldStep => StepShowingSeam(MeldTileScale, MeldSeamHeight);
 
         // 牌河的間距要明顯拉開，太貼會整片黏成一塊看不出是一張一張的牌
-        public const float DiscardStepX = TileAssets.Width + 0.024f;
+        public static float DiscardStepX => (TileAssets.Width + 0.024f) * DiscardTileScale;
 
         /// <summary>牌河：後面那張牌的綠色側邊，在畫面上要露出來多高</summary>
         const float DiscardSeamHeight = 0.025f;
@@ -53,11 +66,13 @@ namespace Mahjong.View.Board
         /// 所以間距 = 牌高 + 白色面板的投影 + 想露出的綠邊，
         /// 後兩項再除以 sin(俯角) 換回世界座標。視角或牌的比例改了它會自己跟著變。
         /// </summary>
-        public static float DiscardStepAway => StepShowingSeam(DiscardSeamHeight);
+        public static float DiscardStepAway
+            => StepShowingSeam(DiscardTileScale, DiscardSeamHeight);
 
-        static float StepShowingSeam(float seamHeight)
-            => TileAssets.Height
-               + (TileAssets.Depth * ViewCos * TileAssets.FrontDepthRatio + seamHeight) / ViewSin;
+        static float StepShowingSeam(float tileScale, float seamHeight)
+            => TileAssets.Height * tileScale
+               + (TileAssets.Depth * tileScale * ViewCos * TileAssets.FrontDepthRatio
+                  + seamHeight * tileScale) / ViewSin;
 
         /// <summary>
         /// 牌山的牌畫得比場上的牌小一號。
@@ -75,10 +90,14 @@ namespace Mahjong.View.Board
         // 牌山每墩之間也留一點縫，才看得出是一墩一墩疊起來的
         public static float WallStep => WallTileWidth + 0.009f;
 
-        public const int DiscardsPerRow = 8;
-
-        /// <summary>牌河最多排幾列。超過就把每列加寬，不讓牌河往桌心蔓延過去。</summary>
-        public const int MaxDiscardRows = 3;
+        /// <summary>
+        /// 牌河固定排幾欄。
+        ///
+        /// 四家的牌河在牌山內圍成一個風車：上下兩家往橫向長，左右兩家往深處長。
+        /// 欄數決定橫向那一段有多寬，寬到超過左右兩家往桌心排到的位置就會撞在一起。
+        /// 六欄是實際算出來塞得下的上限（每家最多約 20 張，六欄剛好四列）。
+        /// </summary>
+        public const int DiscardColumnCount = 6;
 
         public const int WallStacksPerSide = 18;
         public const int WallTilesPerStack = 2;
@@ -226,23 +245,10 @@ namespace Mahjong.View.Board
             => IsSideSeat(displayIndex) ? SideMeldStep : MeldStep;
 
         /// <summary>
-        /// 牌河要排幾欄。
-        ///
-        /// 上下兩家沿著畫面橫向排，間距小，牌打多了就把每一列加寬，
-        /// 而不是往桌心再多排一列，否則牌河會蔓延到桌中間撞在一起。
-        ///
-        /// 左右兩家是沿著畫面深處排的，間距大得多（DiscardStepAway），
-        /// 欄數固定，再多就排到牌山上去了；牌多了往桌心多排一列，
-        /// 那個方向對他們來說反而是便宜的。
+        /// 牌河要排幾欄。四家一律固定欄數，牌打多了往桌心多排一列。
         /// </summary>
         public static int DiscardColumns(int discardCount, int displayIndex)
-        {
-            if (IsSideSeat(displayIndex)) return SideDiscardColumns;
-            return Mathf.Max(DiscardsPerRow, Mathf.CeilToInt(discardCount / (float)MaxDiscardRows));
-        }
-
-        /// <summary>左右兩家的牌河固定幾欄：再多就會排到牌山上</summary>
-        public const int SideDiscardColumns = 6;
+            => DiscardColumnCount;
 
         /// <summary>
         /// 牌河的格位。左右兩家的兩個方向要對調——理由同 MeldStepFor：
@@ -258,7 +264,7 @@ namespace Mahjong.View.Board
             int row = index / columns;
             float x = (column - (columns - 1) * 0.5f) * alongStep;
             float z = -FirstDiscardRow + row * awayStep;
-            return new Vector3(x, TileAssets.Depth * 0.5f, z);
+            return new Vector3(x, TileAssets.Depth * DiscardTileScale * 0.5f, z);
         }
 
         // ------------------------------------------------------------

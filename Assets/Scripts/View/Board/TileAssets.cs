@@ -233,9 +233,11 @@ namespace Mahjong.View.Board
                 root.transform.position = BakeOrigin;
 
                 tile = TileObject.Create(root.transform);
-                // 立著：牌面朝 +Z，也就是朝向攝影機；平躺：牌面朝上
+                // 立著：牌面朝 +Z，也就是朝向攝影機；平躺：牌面朝上。
+                // 平躺時牌的上緣要朝 -Z：拍照的攝影機站在 +Z 往回看，
+                // 朝 +Z 的話字會上下顛倒（牌桌上的攝影機在 -Z，所以那邊剛好相反）。
                 tile.Place(Vector3.zero, lying
-                    ? Quaternion.LookRotation(Vector3.up, Vector3.forward)
+                    ? Quaternion.LookRotation(Vector3.up, Vector3.back)
                     : Quaternion.identity);
 
                 camera = new GameObject("BakeCamera").AddComponent<Camera>();

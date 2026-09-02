@@ -178,6 +178,7 @@ namespace Mahjong.View.Board
             if (state.Wall == null) return;
 
             int total = BoardLayout.TotalWallStacks;
+            int breakStack = BreakStack(state, total);
             int headStack = state.Wall.DrawnFromHead / BoardLayout.WallTilesPerStack;
             int tailStack = total - 1 - state.Wall.DrawnFromTail / BoardLayout.WallTilesPerStack;
             bool headHalfTaken = state.Wall.DrawnFromHead % BoardLayout.WallTilesPerStack != 0;
@@ -190,11 +191,14 @@ namespace Mahjong.View.Board
                 if (stack == tailStack && tailHalfTaken) layers--;
 
                 // 上層先被摸走，所以只剩一張時畫的是下層那張
+                // 缺口從開門的位置算起，繞一圈回來
+                int physicalStack = (stack + breakStack) % total;
+
                 for (int layer = 0; layer < layers; layer++)
                 {
                     Vector3 position;
                     Quaternion rotation;
-                    BoardLayout.WallStack(stack, layer, out position, out rotation);
+                    BoardLayout.WallStack(physicalStack, layer, out position, out rotation);
 
                     var tile = TakeTile();
                     tile.SetTile(TileObject.NoTile);
@@ -202,6 +206,19 @@ namespace Mahjong.View.Board
                     tile.Place(position, rotation);
                 }
             }
+        }
+
+        /// <summary>
+        /// 開門的位置：牌山從哪一墩開始被摸走。
+        ///
+        /// 真牌桌是擲骰決定的，這裡用洗牌的亂數種子推——每一局的種子不同，
+        /// 缺口就不會每一局都長在同一個角落。純粹是視覺效果，
+        /// 牌本身早就在 Wall 裡洗好了，摸的順序不受影響。
+        /// </summary>
+        static int BreakStack(GameState state, int totalStacks)
+        {
+            int seed = state.Wall.Seed % totalStacks;
+            return seed < 0 ? seed + totalStacks : seed;
         }
 
         void DrawSeat(GameState state, int seat, int displayIndex)
@@ -270,14 +287,15 @@ namespace Mahjong.View.Board
         void DrawMelds(List<Meld> melds, int displayIndex, float scale, float cursor)
         {
             float step = BoardLayout.MeldStepFor(displayIndex) * scale;
+            float tileScale = scale * BoardLayout.MeldTileScale;
 
             foreach (var meld in melds)
             {
                 var layout = MeldDisplay.Arrange(meld);
                 foreach (int tileId in layout.Tiles)
                 {
-                    var local = BoardLayout.MeldSlot(cursor + step * 0.5f, scale);
-                    PlaceTileFacingViewer(tileId, displayIndex, local, scale);
+                    var local = BoardLayout.MeldSlot(cursor + step * 0.5f, tileScale);
+                    PlaceTileFacingViewer(tileId, displayIndex, local, tileScale);
                     cursor += step;
                 }
                 cursor += BoardLayout.MeldGroupGap * scale;
@@ -289,7 +307,8 @@ namespace Mahjong.View.Board
             int columns = BoardLayout.DiscardColumns(discards.Count, displayIndex);
             for (int i = 0; i < discards.Count; i++)
                 PlaceTileFacingViewer(discards[i], displayIndex,
-                                      BoardLayout.DiscardSlot(i, columns, displayIndex));
+                                      BoardLayout.DiscardSlot(i, columns, displayIndex),
+                                      BoardLayout.DiscardTileScale);
         }
 
         void PlaceTile(int tileId, int displayIndex, Vector3 localPosition,
