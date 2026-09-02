@@ -439,7 +439,12 @@
     font-variant-numeric: tabular-nums;
   }
 
-  ol.flow strong { display: block; }
+  /* 序號佔第一欄，標題與說明都要留在第二欄——
+     不指定的話說明會被排到第二列的第一欄，被 2.75rem 擠成一行兩個字 */
+  ol.flow li > strong,
+  ol.flow li > span { grid-column: 2; }
+
+  ol.flow li > strong { margin-bottom: .1rem; }
   ol.flow span { color: var(--ink-soft); font-size: .9375rem; }
 
   /* ── 未實作項目 ─────────────────────────────────── */
@@ -549,7 +554,7 @@
     <div class="sec-head"><span class="sec-num">二</span><h2>一局怎麼跑</h2></div>
 
     <ol class="flow">
-      <li><strong>洗牌與發牌</strong><span>144 張洗妥後圍成牌山。莊家 17 張，其餘三家各 16 張。</span></li>
+      <li><strong>洗牌與發牌</strong><span>144 張洗妥後圍成牌山。莊家由隨機決定，之後依莊家、下家、對家、上家的順序，莊家 17 張、其餘三家各 16 張。</span></li>
       <li><strong>補花</strong><span>手上或摸到的花牌自動從牌山尾端補牌，補到不是花為止。</span></li>
       <li><strong>輪流摸打</strong><span>逆時針進行。輪到您時點兩下打出，剛摸進來的那張會與手牌分開顯示。</span></li>
       <li><strong>宣告動作</strong><span>可以吃、碰、槓、胡時，畫面下方出現對應按鈕；不能做的動作以灰色呈現。</span></li>
@@ -588,6 +593,8 @@
           <tr><td class="name">動作優先權</td><td>胡 &gt; 碰／槓 &gt; 吃</td></tr>
           <tr><td class="name">多家可胡</td><td>逆時針方向離打牌者近者優先</td></tr>
           <tr><td class="name">流局</td><td>牌山抽乾</td></tr>
+          <tr><td class="name">莊家</td><td>第一局隨機決定；莊家胡牌或流局則連莊，否則換下一家</td></tr>
+          <tr><td class="name">擲骰開門</td><td>不模擬。牌山洗好後直接依序摸牌，開門位置僅作畫面呈現</td></tr>
         </tbody>
       </table>
     </div>
