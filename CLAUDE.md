@@ -173,4 +173,4 @@ cd tools/CoreTests && dotnet run
 - [x] 中文字型 Assets/Resources/MahjongFont.ttf（Noto Sans TC 子集化 174 KB，見 docs/THIRD_PARTY_NOTICES.md）
 - [x] Standard 著色器加入 Always Included Shaders（由 Assets/Editor/WebGLBuild.cs 每次建置自動確保）
 - [x] WebGL build（`Mahjong ▸ Build WebGL` 或命令列 -executeMethod）
-- [ ] Firebase 部署（待建立專案並 firebase login）
+- [x] Firebase 部署 → https://mahjong-5b979.web.app

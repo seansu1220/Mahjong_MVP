@@ -2335,3 +2335,40 @@ IL2CPP、無多執行緒、Gzip 壓縮並開啟 **decompressionFallback**、
 
 Unity 批次建置離開碼 0；log 確認著色器已加入、字型已打包。
 Firebase 部署待建立專案並登入後執行。
+
+---
+
+## 2026-09-04（第十九次）　上線
+
+**線上網址**：https://mahjong-5b979.web.app
+
+Firebase 專案 `mahjong-5b979`，18 個檔案部署完成。
+
+### 部署後驗證
+
+| 檔案 | 狀態 | 大小 |
+|---|---|---|
+| `index.html` | 200 | 4,875 |
+| `Build/WebGL.loader.js` | 200 | 44,254 |
+| `Build/WebGL.data.unityweb` | 200 | 8,564,526 |
+| `Build/WebGL.wasm.unityweb` | 200 | 5,864,349 |
+| `Build/WebGL.framework.js.unityweb` | 200 | 76,898 |
+| `OFL.txt`（字型授權） | 200 | 4,388 |
+
+位元組數與本機建置產物完全一致。
+
+另外確認 `.unityweb` **沒有**被加上 `Content-Encoding`——這正是第十八次特別處理過的地方，
+加了的話瀏覽器會先解一次、Unity 的 loader 再解一次，頁面直接壞掉。
+`Cache-Control: public, max-age=31536000, immutable` 也如設定生效。
+
+部署前已在本機 `http://127.0.0.1:8080` 實測：中文正常、牌為白綠雙色（著色器未被剝除）、
+可完整打完一局。
+
+### 重新部署
+
+```
+Unity.exe -batchmode -projectPath . -executeMethod Mahjong.EditorTools.WebGLBuild.BuildFromCommandLine -logFile build.log
+firebase deploy --only hosting
+```
+
+建置時 Unity 編輯器必須關閉（專案資料夾會被鎖住）。
